@@ -32,6 +32,23 @@ export async function POST(req: Request) {
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
+      const errString = JSON.stringify(body);
+      const isPaidRequired =
+        res.status === 402 ||
+        errString.includes("paid_plan_required") ||
+        errString.includes("can_not_use_instant_voice_cloning");
+
+      if (isPaidRequired) {
+        console.info(
+          "[ElevenLabs API] Free tier detected (Instant Voice Cloning requires Paid plan). Seamlessly using ElevenLabs reassuring library voice 'Sarah' (EXAVITQu4vr4xnSDxMaL)."
+        );
+        // Sarah - Mature, Reassuring, Confident
+        return NextResponse.json({
+          voice_id: "EXAVITQu4vr4xnSDxMaL",
+          notice: "Using ElevenLabs library voice (upgrade to Paid plan for custom clone)",
+        });
+      }
+
       return NextResponse.json(
         { error: "ElevenLabs voice clone failed", detail: body },
         { status: res.status }
