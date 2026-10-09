@@ -7,6 +7,8 @@ export const DAEMON_URL = (
 
 export const WS_URL = `${DAEMON_URL.replace(/^http/, "ws")}/ws/telemetry`;
 export const VIDEO_FEED_URL = `${DAEMON_URL}/video_feed`;
+// Same feed with the daemon's face-gate and vitals overlay drawn on it.
+export const VIDEO_FEED_DEBUG_URL = `${DAEMON_URL}/video_feed/debug`;
 export const SIMULATE_RESTLESS_URL = `${DAEMON_URL}/api/simulate-restless`;
 
 // Generate telemetry in the browser instead of connecting to the daemon.

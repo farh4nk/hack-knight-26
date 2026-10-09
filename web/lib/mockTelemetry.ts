@@ -1,5 +1,5 @@
 import { SIMULATE_RESTLESS_MS, TELEMETRY_HZ } from "./config";
-import type { SleepState, Telemetry } from "./types";
+import type { CameraStatus, SleepState, Telemetry } from "./types";
 
 // Scripted cycle so every badge state shows up within about a minute.
 const SCRIPT: { state: SleepState; seconds: number }[] = [
@@ -20,6 +20,21 @@ const PROFILE: Record<
   RESTLESS: { brpm: 38, bpm: 135, motion: 0.7, confidence: 0.7 },
   AWAKE: { brpm: 42, bpm: 145, motion: 0.85, confidence: 0.75 },
   SIGNAL_UNSTABLE: { brpm: 0, bpm: 0, motion: 0.3, confidence: 0.2 },
+};
+
+// Camera status per state; SIGNAL_UNSTABLE shows a Presage hint like the real daemon.
+const CAMERA: Record<SleepState, CameraStatus> = {
+  ASLEEP: { live: true, gate: "OPEN", framing: "OK", sdk_code: null, sdk_hint: null },
+  DROWSY: { live: true, gate: "OPEN", framing: "OK", sdk_code: null, sdk_hint: null },
+  RESTLESS: { live: true, gate: "OPEN", framing: "OK", sdk_code: null, sdk_hint: null },
+  AWAKE: { live: true, gate: "OPEN", framing: "OK", sdk_code: null, sdk_hint: null },
+  SIGNAL_UNSTABLE: {
+    live: true,
+    gate: "CLOSED",
+    framing: "NO_CHEST_ROOM",
+    sdk_code: "kFaceTooLow",
+    sdk_hint: "Move up, or tilt the camera down.",
+  },
 };
 
 const jitter = (base: number, spread: number) =>
@@ -58,6 +73,7 @@ export function startMockTelemetry(
         confidence: Number(jitter(p.confidence, 0.05).toFixed(2)),
       },
       motion_index: Number(Math.max(0, jitter(p.motion, 0.05)).toFixed(2)),
+      camera: CAMERA[state],
     });
   }, 1000 / TELEMETRY_HZ);
 

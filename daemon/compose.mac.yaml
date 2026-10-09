@@ -1,0 +1,20 @@
+# Laptop (macOS/Windows) variant: no /dev/video0 passthrough. The camera is streamed
+# in from scripts/camera_publisher.py running on the host. Use via scripts/run_mac.sh.
+services:
+  cradleecho:
+    build: .
+    # The Presage SDK apt package is amd64-only; runs under emulation on Apple Silicon.
+    platform: linux/amd64
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - CRADLEECHO_SOURCE=${CRADLEECHO_SOURCE:-mock}
+      - CRADLEECHO_CAMERA=${CRADLEECHO_CAMERA:-http://host.docker.internal:8090/video}
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # needed on Linux; harmless on Docker Desktop
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')\""]

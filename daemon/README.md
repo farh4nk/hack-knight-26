@@ -20,6 +20,27 @@ uv run python -m cradleecho
 ```
 Open a browser on your phone on the same Wi-Fi network and navigate to `http://<LAN_IP>:8000` (the exact IP is printed in the logs on startup).
 
+### macOS helper script
+
+```bash
+scripts/run_mac.sh                   # native, mock vitals, Mac webcam
+scripts/run_mac.sh --facegate        # native, OpenCV face gate on (fake Presage bridge)
+scripts/run_mac.sh docker            # Docker; webcam is streamed into the container
+scripts/run_mac.sh docker --presage  # Docker with real Presage (PRESAGE_API_KEY in .env)
+scripts/run_mac.sh docker --stamp   # also burn capture time into frames for latency testing
+scripts/run_mac.sh stop
+```
+
+Measure end-to-end video latency with a real webcam (needs `--stamp`; prints PASS/FAIL):
+```bash
+uv run python scripts/measure_latency.py --seconds 20
+```
+
+Docker Desktop on macOS/Windows can't pass a camera device into a container, so Docker mode runs
+`scripts/camera_publisher.py` on the host (MJPEG on :8090) and sets
+`CRADLEECHO_CAMERA=http://host.docker.internal:8090/video`. `compose.mac.yaml` is the laptop
+variant of `compose.yaml`; on the Pi keep using `compose.yaml` with direct `/dev/video0`.
+
 Run tests:
 ```bash
 uv run pytest
