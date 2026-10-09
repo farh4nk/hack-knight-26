@@ -4,7 +4,7 @@
 # is slow and can run out of memory.
 #
 #   deploy/pi/build_and_ship.sh pi@raspberrypi.local              # images + compose file
-#   deploy/pi/build_and_ship.sh pi@raspberrypi.local --with-env   # also copy daemon/.env (API key)
+#   deploy/pi/build_and_ship.sh pi@raspberrypi.local --with-env   # also copy API keys (Presage, ElevenLabs)
 #
 # On an Apple Silicon Mac the arm64 build is native and fast. On x86 machines run once:
 #   docker run --privileged --rm tonistiigi/binfmt --install arm64
@@ -41,11 +41,18 @@ ssh "$TARGET" "chmod +x $REMOTE_DIR/pi_check.sh"
 if [[ $WITH_ENV -eq 1 ]]; then
   [[ -f daemon/.env ]] || { echo "daemon/.env not found" >&2; exit 1; }
   scp -q daemon/.env "$TARGET:$REMOTE_DIR/daemon.env"
-  ssh "$TARGET" "chmod 600 $REMOTE_DIR/daemon.env"
-  echo "Copied daemon/.env -> $REMOTE_DIR/daemon.env"
+  # Only the ElevenLabs key goes to the Pi; the rest of web/.env.local is dev-only settings.
+  ENV_FILE=""
+  for f in web/.env.local web/.env; do [[ -f "$f" ]] && ENV_FILE="$f" && break; done
+  EL_LINE=""
+  [[ -n "$ENV_FILE" ]] && EL_LINE=$(grep -E '^ELEVENLABS_API_KEY=.+' "$ENV_FILE" | grep -v 'your_' | head -1 || true)
+  printf '%s\n' "$EL_LINE" | ssh "$TARGET" "cat > $REMOTE_DIR/web.env"
+  ssh "$TARGET" "chmod 600 $REMOTE_DIR/daemon.env $REMOTE_DIR/web.env"
+  echo "Copied daemon/.env -> daemon.env"
+  [[ -n "$EL_LINE" ]] && echo "Copied ELEVENLABS_API_KEY -> web.env" || echo "NOTE: no ELEVENLABS_API_KEY in web/.env.local; voice features will not work on the Pi."
 else
-  ssh "$TARGET" "touch $REMOTE_DIR/daemon.env"
-  echo "NOTE: $REMOTE_DIR/daemon.env on the Pi is empty. Add PRESAGE_API_KEY=... or re-run with --with-env."
+  ssh "$TARGET" "cd $REMOTE_DIR && touch daemon.env web.env"
+  echo "NOTE: daemon.env and web.env on the Pi are empty. Add PRESAGE_API_KEY / ELEVENLABS_API_KEY or re-run with --with-env."
 fi
 
 cat <<DONE

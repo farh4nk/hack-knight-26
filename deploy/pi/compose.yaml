@@ -32,6 +32,8 @@ services:
     image: cradleecho-web:latest
     ports:
       - "3000:3000"
+    env_file:
+      - web.env # ELEVENLABS_API_KEY (used by the server-side voice routes)
     depends_on:
       - daemon
     restart: unless-stopped
