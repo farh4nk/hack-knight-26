@@ -20,6 +20,14 @@ export function daemonUrl(): string {
   return `http://localhost:${DAEMON_PORT}`;
 }
 
+/** Analytics API (nightly summary, soothe-event log). Same host-relative rule as the daemon, port 8001. */
+export function analyticsUrl(): string {
+  const fromEnv = process.env.NEXT_PUBLIC_ANALYTICS_URL;
+  if (fromEnv) return fromEnv.replace(/\/$/, "");
+  if (typeof window !== "undefined") return `${window.location.protocol}//${window.location.hostname}:8001`;
+  return "http://localhost:8001";
+}
+
 export const wsUrl = () => `${daemonUrl().replace(/^http/, "ws")}/ws/telemetry`;
 export const videoFeedUrl = (debug = false) =>
   // The debug feed has the daemon's face-gate and vitals overlay drawn on it.
