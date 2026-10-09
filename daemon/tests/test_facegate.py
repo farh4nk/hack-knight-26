@@ -214,10 +214,7 @@ def test_facegate_progress():
     clock.advance(3.0)
     assert "closing 3.0/10.0s" in gate.progress()
 
-def test_config_debug_overlay():
-    from cradleecho.config import Settings
-    s = Settings(cradleecho_source="mock")
-    assert s.debug_overlay is False
+
 
 def test_facegate_stub_detector_room_ratio():
     clock = FakeClock()

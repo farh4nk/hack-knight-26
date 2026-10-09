@@ -23,6 +23,6 @@ class Settings(BaseSettings):
     face_gate: bool = Field(default=True, validation_alias="CRADLEECHO_FACE_GATE")
     gate_chest_room: float = Field(default=1.75, gt=0, validation_alias="CRADLEECHO_GATE_CHEST_ROOM")
     gate_min_face_frac: float = Field(default=0.15, gt=0, validation_alias="CRADLEECHO_GATE_MIN_FACE")
-    debug_overlay: bool = Field(default=False, validation_alias="CRADLEECHO_DEBUG_OVERLAY")
+
 
 settings = Settings()

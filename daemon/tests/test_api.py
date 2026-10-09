@@ -138,3 +138,57 @@ async def test_presage_source_and_fake_bridge():
         assert stale_reading.confidence == 0.0
     finally:
         await source.stop()
+
+def test_video_feed_debug(test_app):
+    cam = test_app.state.camera
+    assert getattr(cam, "_debug_viewers", 0) == 0
+    with TestClient(test_app) as client:
+        response = client.get("/video_feed/debug?limit=1")
+        assert response.status_code == 200
+        content_type = response.headers.get("content-type", "")
+        assert "multipart/x-mixed-replace" in content_type
+        assert b"--frame" in response.content
+        assert b"\xff\xd8" in response.content
+    assert cam._debug_viewers == 0
+
+def test_camera_debug_slot():
+    from cradleecho.camera import Camera
+    import time
+    cam = Camera(device="none")
+    # For dummy source, _capture_loop doesn't grab real frames. 
+    # But let's just test that without viewers we have no debug jpeg, and with viewers we do?
+    # Wait, for dummy device, frame is None, so it always yields the fallback frame.
+    pass
+
+def test_camera_debug_slot(monkeypatch):
+    from cradleecho.camera import Camera
+    import time
+    import numpy as np
+    
+    class FakeCap:
+        def isOpened(self): return True
+        def read(self):
+            return True, np.zeros((480, 640, 3), dtype=np.uint8)
+        def set(self, prop, val): pass
+        def release(self): pass
+        
+    monkeypatch.setattr("cv2.VideoCapture", lambda x: FakeCap())
+    
+    cam = Camera(device="0")
+    cam.set_overlay(lambda f: None)
+    cam.start()
+    try:
+        assert cam._debug_viewers == 0
+        time.sleep(0.2)
+        assert cam.get_latest_debug_jpeg() == cam._latest_jpeg
+        assert cam._latest_debug_jpeg == b""
+        
+        cam.acquire_debug()
+        time.sleep(0.2)
+        assert len(cam._latest_debug_jpeg) > 0
+        
+        cam.release_debug()
+        time.sleep(0.2)
+        assert cam._latest_debug_jpeg == b""
+    finally:
+        cam.stop()

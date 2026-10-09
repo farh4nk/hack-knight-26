@@ -28,6 +28,22 @@ class PresageVitalsSource:
         return self._proc is not None
 
     @property
+    def gate(self):
+        return self._gate
+
+    @property
+    def validation_code(self) -> str | None:
+        if self._validation:
+            return self._validation[0]
+        return None
+
+    @property
+    def raw_validation_hint(self) -> str | None:
+        if self._validation:
+            return self._validation[1] if self._validation[1] else None
+        return None
+
+    @property
     def validation_hint(self) -> str:
         if self._validation:
             code, hint = self._validation

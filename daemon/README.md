@@ -65,7 +65,6 @@ The daemon is configured via environment variables or a `.env` file (parsed usin
 | `CRADLEECHO_FACE_GATE` | `True` | Enable the Haar cascade face gate to suspend Presage SDK billing/CPU when nobody is in frame. |
 | `CRADLEECHO_GATE_CHEST_ROOM` | `1.75` | Required chest room under face, as multiple of face height. |
 | `CRADLEECHO_GATE_MIN_FACE` | `0.15` | Minimum face height as fraction of frame height. |
-| `CRADLEECHO_DEBUG_OVERLAY` | `False` | Render diagnostic overlay on the video feed showing face gate bounding boxes and state. |
 
 ### Face gate
 
@@ -91,11 +90,26 @@ When `CRADLEECHO_FACE_GATE` is enabled, an OpenCV Haar cascade face detector ana
     "bpm": 118.0,
     "confidence": 0.88
   },
-  "motion_index": 0.72
+  "motion_index": 0.72,
+  "camera": {
+    "live": true,
+    "gate": "OPEN",
+    "framing": "OK",
+    "sdk_code": "kFaceLow",
+    "sdk_hint": "Move up, or tilt the camera down."
+  }
 }
 ```
 
 Valid states: `ASLEEP | DROWSY | RESTLESS | AWAKE | SIGNAL_UNSTABLE`
+
+*Note: The `camera` object is additive/backward compatible, and `state` valid values remain unchanged.*
+**Camera fields:**
+- `live` (bool): `true` when capturing real frames, `false` if synthetic fallback
+- `gate` (string): `OPEN`, `CLOSED`, or `DISABLED`
+- `framing` (string): `OK`, `NO_FACE`, `MULTIPLE_FACES`, `TOO_SMALL`, `OFF_CENTER`, `NO_CHEST_ROOM`, or `UNKNOWN`
+- `sdk_code` (string | null): latest Presage validation error code (e.g. `kFaceTooLow`), or `null`
+- `sdk_hint` (string | null): human-readable Presage fix instruction, or `null`
 
 ## Raspberry Pi 4
 

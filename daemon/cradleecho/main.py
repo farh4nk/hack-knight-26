@@ -59,20 +59,19 @@ def create_app(
         cam.add_frame_listener(src.push_frame)
     hub = TelemetryHub(cam, src, clsf, interval_s=0.5)
 
-    if settings.debug_overlay:
-        from cradleecho.overlay import draw_vitals_panel
-        def _composite_overlay(frame):
-            if gate is not None:
-                gate.draw_overlay(frame)
-            hint = getattr(src, 'validation_hint', '')
-            session_running = src.session_running if isinstance(src, PresageVitalsSource) else None
-            draw_vitals_panel(
-                frame,
-                hub.get_latest_payload(),
-                sdk_hint=hint,
-                session_running=session_running,
-            )
-        cam.set_overlay(_composite_overlay)
+    from cradleecho.overlay import draw_vitals_panel
+    def _composite_overlay(frame):
+        if gate is not None:
+            gate.draw_overlay(frame)
+        hint = getattr(src, 'validation_hint', '')
+        session_running = src.session_running if isinstance(src, PresageVitalsSource) else None
+        draw_vitals_panel(
+            frame,
+            hub.get_latest_payload(),
+            sdk_hint=hint,
+            session_running=session_running,
+        )
+    cam.set_overlay(_composite_overlay)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -167,6 +166,34 @@ def create_app(
                     await asyncio.sleep(0.04)  # ~25 fps
             except (asyncio.CancelledError, GeneratorExit):
                 return
+
+        return StreamingResponse(
+            mjpeg_generator(),
+            media_type="multipart/x-mixed-replace; boundary=frame",
+        )
+
+    @app.get("/video_feed/debug")
+    async def video_feed_debug(request: Request, limit: int | None = None):
+        async def mjpeg_generator() -> AsyncGenerator[bytes, None]:
+            cam.acquire_debug()
+            try:
+                count = 0
+                while limit is not None or not await request.is_disconnected():
+                    frame_bytes = cam.get_latest_debug_jpeg()
+                    yield (
+                        b"--frame\r\n"
+                        b"Content-Type: image/jpeg\r\n\r\n"
+                        + frame_bytes
+                        + b"\r\n"
+                    )
+                    count += 1
+                    if limit is not None and count >= limit:
+                        break
+                    await asyncio.sleep(0.04)  # ~25 fps
+            except (asyncio.CancelledError, GeneratorExit):
+                return
+            finally:
+                cam.release_debug()
 
         return StreamingResponse(
             mjpeg_generator(),

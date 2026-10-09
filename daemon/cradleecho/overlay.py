@@ -78,19 +78,19 @@ def draw_vitals_panel(
     panel_w = max_text_w + 2 * margin
     panel_h = len(lines) * line_height + 2 * margin
 
-    x1 = 0
-    y1 = h - panel_h
-    x2 = panel_w
-    y2 = h
+    x0 = 0
+    y0 = h - panel_h
+    x1 = panel_w
+    y1 = h
 
-    if y1 < 0: y1 = 0
-    if x2 > w: x2 = w
+    if y0 < 0: y0 = 0
+    if x1 > w: x1 = w
 
-    overlay = frame_bgr.copy()
-    cv2.rectangle(overlay, (x1, y1), (x2, y2), (0, 0, 0), -1)
-    cv2.addWeighted(overlay, 0.6, frame_bgr, 0.4, 0, frame_bgr)
+    roi = frame_bgr[y0:y1, x0:x1]
+    dark = np.zeros_like(roi)
+    cv2.addWeighted(dark, 0.6, roi, 0.4, 0, roi)
 
-    y_offset = y1 + margin + 12
+    y_offset = y0 + margin + 12
     for segments in lines:
         x_offset = margin
         for text, color in segments:
