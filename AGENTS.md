@@ -104,7 +104,7 @@ Valid states: `ASLEEP | DROWSY | RESTLESS | AWAKE | SIGNAL_UNSTABLE`
 Deliverable: a local service that streams video and emits parsed biometric states.
 
 - [x] Task 1.1 — Video capture & stream: set up a FastAPI service with an MJPEG streaming endpoint at `/video_feed` using OpenCV (`cv2.VideoCapture(0)`).
-- [ ] Task 1.2 — Presage integration: connect the Presage SDK (SmartSpectra) to pull breathing rate (BrPM), pulse rate (BPM), and tracking confidence. Fallback: write a mock telemetry generator first so Dev 2 is not blocked.
+- [x] Task 1.2 — Presage integration: connect the Presage SDK (SmartSpectra) to pull breathing rate (BrPM), pulse rate (BPM), and tracking confidence. Fallback: write a mock telemetry generator first so Dev 2 is not blocked.
 - [x] Task 1.3 — Sleep state classifier: implement the rolling state machine:
   - If confidence < 0.40 => `SIGNAL_UNSTABLE`
   - If BrPM is stable (20–30) with low motion => `ASLEEP`

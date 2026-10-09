@@ -5,11 +5,31 @@ import json
 import random
 import signal
 import sys
+import threading
 import time
+
+
+def start_stdin_reader(width: int, height: int, counter: list[int]) -> None:
+    """Drain W*H*3-byte raw frames from stdin, counting them (mirrors bridge --stdin)."""
+    frame_bytes = width * height * 3
+
+    def run() -> None:
+        while True:
+            data = sys.stdin.buffer.read(frame_bytes)
+            if len(data) < frame_bytes:
+                return
+            counter[0] += 1
+
+    threading.Thread(target=run, daemon=True).start()
 
 
 def main() -> None:
     running = True
+    frames = [0]
+    stdin_mode = "--stdin" in sys.argv
+    if stdin_mode:
+        w, h = sys.argv[sys.argv.index("--stdin") + 1].split("x")
+        start_stdin_reader(int(w), int(h), frames)
 
     def handle_signal(sig, frame):
         nonlocal running
@@ -43,10 +63,15 @@ def main() -> None:
             motion += random.uniform(-0.02, 0.02)
             motion = max(0.05, min(0.20, motion))
 
+            if stdin_mode and frames[0] == 0:
+                time.sleep(0.1)
+                continue
+
             payload = {
                 "t": time.time(),
                 "brpm": round(brpm, 2),
-                "bpm": round(bpm, 2),
+                # In stdin mode bpm reports frames received, so tests can observe the pipe.
+                "bpm": float(frames[0]) if stdin_mode else round(bpm, 2),
                 "confidence": round(conf, 2),
                 "motion_index": round(motion, 2),
             }

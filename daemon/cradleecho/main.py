@@ -47,7 +47,32 @@ def create_app(
     cam = camera or Camera()
     src = source or build_source()
     clsf = classifier or SleepStateClassifier()
+    gate = None
+    if isinstance(src, PresageVitalsSource) and src.wants_frames:
+        if settings.face_gate:
+            from cradleecho.facegate import FaceGate
+            gate = FaceGate(
+                chest_room=settings.gate_chest_room,
+                min_face_frac=settings.gate_min_face_frac,
+            )
+            src.set_gate(gate)
+        cam.add_frame_listener(src.push_frame)
     hub = TelemetryHub(cam, src, clsf, interval_s=0.5)
+
+    if settings.debug_overlay:
+        from cradleecho.overlay import draw_vitals_panel
+        def _composite_overlay(frame):
+            if gate is not None:
+                gate.draw_overlay(frame)
+            hint = getattr(src, 'validation_hint', '')
+            session_running = src.session_running if isinstance(src, PresageVitalsSource) else None
+            draw_vitals_panel(
+                frame,
+                hub.get_latest_payload(),
+                sdk_hint=hint,
+                session_running=session_running,
+            )
+        cam.set_overlay(_composite_overlay)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):

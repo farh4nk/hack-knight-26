@@ -3,6 +3,7 @@
 import logging
 import threading
 import time
+from collections.abc import Callable
 
 import cv2
 import numpy as np
@@ -72,14 +73,22 @@ class Camera:
         self._mean_brightness: float | None = None
         self._is_live: bool = False
         self._lock = threading.Lock()
+        self._frame_listeners: list[Callable[[np.ndarray], None]] = []
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
+        self._overlay_fn: Callable[[np.ndarray], None] | None = None
 
         # Pre-generate synthetic fallback frame
         fallback_mat = create_synthetic_frame("NO CAMERA")
         success, encoded = cv2.imencode(".jpg", fallback_mat, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
         self._fallback_jpeg: bytes = encoded.tobytes() if success else b""
         self._latest_jpeg: bytes = self._fallback_jpeg
+
+    def set_overlay(self, fn: Callable[[np.ndarray], None] | None) -> None:
+        """Set a callback to draw an overlay on the encoded MJPEG frame."""
+        with self._lock:
+            self._overlay_fn = fn
+
 
     def start(self) -> None:
         """Start the background capture thread."""
@@ -95,6 +104,13 @@ class Camera:
         if self._thread is not None:
             self._thread.join(timeout=2.0)
             self._thread = None
+
+    def add_frame_listener(self, listener: Callable[[np.ndarray], None]) -> None:
+        """Register a callback receiving each live BGR frame on the capture thread.
+
+        Listeners must return quickly and never block.
+        """
+        self._frame_listeners.append(listener)
 
     def get_latest_frame_jpeg(self) -> bytes:
         """Return the most recent JPEG frame bytes."""
@@ -143,6 +159,12 @@ class Camera:
                         frame = raw_frame
 
                 if frame is not None:
+                    for listener in self._frame_listeners:
+                        try:
+                            listener(frame)
+                        except Exception:
+                            logger.exception("Frame listener failed")
+
                     # Compute frame-diff motion
                     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                     
@@ -167,7 +189,17 @@ class Camera:
                             self._motion_index = 0.3 * motion_val + 0.7 * self._motion_index
                     prev_gray = blurred
 
-                    ret_enc, enc_jpeg = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
+                    view = frame
+                    with self._lock:
+                        overlay_fn = self._overlay_fn
+                    if overlay_fn is not None:
+                        view = frame.copy()
+                        try:
+                            overlay_fn(view)
+                        except Exception:
+                            logger.exception("Overlay failed")
+
+                    ret_enc, enc_jpeg = cv2.imencode(".jpg", view, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
                     if ret_enc:
                         with self._lock:
                             self._latest_jpeg = enc_jpeg.tobytes()
