@@ -1,6 +1,7 @@
 "use client";
 
 import { useTelemetry } from "@/context/TelemetryProvider";
+import { unstableHint } from "@/lib/cameraHint";
 import type { SleepState } from "@/lib/types";
 
 const BADGES: Record<SleepState, { label: string; className: string }> = {
@@ -21,7 +22,7 @@ const BADGES: Record<SleepState, { label: string; className: string }> = {
     className: "bg-rose-500/95 text-white",
   },
   SIGNAL_UNSTABLE: {
-    label: "Signal Unstable — Adjust Crib Lighting",
+    label: "Signal Unstable", // hint appended at render time
     className: "bg-slate-500/90 text-white",
   },
 };
@@ -32,7 +33,9 @@ export function StateBadge() {
   const badge =
     !connected || stale || !latest
       ? { label: "Disconnected — Waiting for Monitor", className: "bg-slate-800/90 text-slate-300" }
-      : BADGES[latest.state];
+      : latest.state === "SIGNAL_UNSTABLE"
+        ? { ...BADGES.SIGNAL_UNSTABLE, label: `Signal Unstable — ${unstableHint(latest.camera)}` }
+        : BADGES[latest.state];
 
   return (
     <div
