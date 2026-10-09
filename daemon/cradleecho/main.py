@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -37,6 +38,38 @@ def build_source() -> VitalsSource:
         return PresageVitalsSource()
     logger.info("Initializing Mock vitals source")
     return MockVitalsSource()
+
+
+KEEPALIVE_S = 1.0  # resend the current frame this often if the camera is idle/synthetic
+
+
+async def _stream_new_frames(
+    request: Request, cam: Camera, get_bytes, limit: int | None
+) -> AsyncGenerator[bytes, None]:
+    """Yield MJPEG parts, sending each new frame the moment it exists.
+
+    Replaces a fixed 40 ms poll: that added up to 40 ms per frame and re-sent duplicates.
+    """
+    count = 0
+    last_seq = -1
+    last_sent = 0.0
+    last_disconnect_check = 0.0
+    while True:
+        now = time.monotonic()
+        # `limit` is test-only; is_disconnected() can block under TestClient
+        if limit is None and now - last_disconnect_check > 0.25:
+            last_disconnect_check = now
+            if await request.is_disconnected():
+                return
+        seq = cam.get_frame_seq()
+        if seq != last_seq or now - last_sent >= KEEPALIVE_S:
+            last_seq, last_sent = seq, now
+            yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + get_bytes() + b"\r\n"
+            count += 1
+            if limit is not None and count >= limit:
+                return
+        else:
+            await asyncio.sleep(0.005)
 
 
 def create_app(
@@ -149,21 +182,9 @@ def create_app(
     @app.get("/video_feed")
     async def video_feed(request: Request, limit: int | None = None):
         async def mjpeg_generator() -> AsyncGenerator[bytes, None]:
-            count = 0
             try:
-                # `limit` is test-only; is_disconnected() can block under TestClient
-                while limit is not None or not await request.is_disconnected():
-                    frame_bytes = cam.get_latest_frame_jpeg()
-                    yield (
-                        b"--frame\r\n"
-                        b"Content-Type: image/jpeg\r\n\r\n"
-                        + frame_bytes
-                        + b"\r\n"
-                    )
-                    count += 1
-                    if limit is not None and count >= limit:
-                        break
-                    await asyncio.sleep(0.04)  # ~25 fps
+                async for part in _stream_new_frames(request, cam, cam.get_latest_frame_jpeg, limit):
+                    yield part
             except (asyncio.CancelledError, GeneratorExit):
                 return
 
@@ -177,19 +198,8 @@ def create_app(
         async def mjpeg_generator() -> AsyncGenerator[bytes, None]:
             cam.acquire_debug()
             try:
-                count = 0
-                while limit is not None or not await request.is_disconnected():
-                    frame_bytes = cam.get_latest_debug_jpeg()
-                    yield (
-                        b"--frame\r\n"
-                        b"Content-Type: image/jpeg\r\n\r\n"
-                        + frame_bytes
-                        + b"\r\n"
-                    )
-                    count += 1
-                    if limit is not None and count >= limit:
-                        break
-                    await asyncio.sleep(0.04)  # ~25 fps
+                async for part in _stream_new_frames(request, cam, cam.get_latest_debug_jpeg, limit):
+                    yield part
             except (asyncio.CancelledError, GeneratorExit):
                 return
             finally:
