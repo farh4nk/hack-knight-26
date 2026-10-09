@@ -65,41 +65,38 @@ export function VoiceRecorder({ onComplete, loading }: VoiceRecorderProps) {
   }
 
   return (
-    <div className="rounded-2xl bg-slate-900 p-5 ring-1 ring-white/10">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-slate-400">Parent Voice Onboarding</span>
-        <span className="rounded bg-indigo-950 px-2 py-0.5 text-xs text-indigo-400">ElevenLabs IVC</span>
-      </div>
-
-      <p className="mt-2 text-xs text-slate-400">
-        Record your voice for {RECORD_SECONDS} seconds in a calm, soothing tone. CradleEcho uses
-        your voice clone to settle Maya before you have to get out of bed.
+    <div>
+      <h2 className="font-display text-xl text-ink [font-variation-settings:'SOFT'_100]">Your voice</h2>
+      <p className="mt-3 text-sm leading-relaxed text-ink-dim">
+        Read anything aloud for {RECORD_SECONDS} seconds in a calm, natural tone. CradleEcho uses it to settle
+        Maya in your voice before you have to get out of bed.
       </p>
 
       {phase === "recording" && (
-        <div className="mt-3 flex items-center gap-2 rounded-lg bg-rose-500/10 px-3 py-2 text-sm text-rose-400">
-          <span className="inline-block h-2.5 w-2.5 animate-ping rounded-full bg-rose-500" />
-          Recording… {remaining}s remaining
+        <div role="status" className="mt-4 flex items-center gap-2.5 text-sm text-ink">
+          <span className="breathe h-2.5 w-2.5 rounded-full bg-rose-300" aria-hidden />
+          Recording… {remaining}s
         </div>
       )}
 
       {(phase === "uploading" || loading) && (
-        <div className="mt-3 flex items-center gap-2 text-sm text-indigo-400">
-          <span className="h-4 w-4 animate-spin rounded-full border-2 border-indigo-400 border-t-transparent" />
-          Creating instant voice clone…
+        <div role="status" className="mt-4 flex items-center gap-2.5 text-sm text-ink-dim">
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-tone border-t-transparent" aria-hidden />
+          Creating your voice…
         </div>
       )}
 
-      {error && <p className="mt-2 text-xs text-rose-400">{error}</p>}
+      {error && <p role="alert" className="mt-3 text-sm text-rose-300">{error}</p>}
 
       <button
         type="button"
         onClick={start}
         disabled={phase === "recording" || phase === "uploading" || loading}
-        className="mt-3 w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+        className="mt-5 w-full rounded-full bg-ink px-4 py-2.5 text-sm font-medium text-[#0a0b15] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
       >
-        {phase === "done" ? "Re-record Voice" : "Record 10-Sec Sample"}
+        {phase === "done" ? "Record again" : `Record a ${RECORD_SECONDS}-second sample`}
       </button>
+      <p className="mt-4 text-xs text-ink-faint">Voice by ElevenLabs</p>
     </div>
   );
 }

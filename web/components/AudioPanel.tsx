@@ -45,18 +45,19 @@ export function AudioPanel() {
   });
 
   return (
-    <div className="flex flex-col gap-3">
-      {/* Active Intervention Banner for Parent */}
+    <section className="flex flex-col gap-4">
+      {/* Shown to the parent whenever auto-soothe steps in or settles */}
       {notification && (
-        <div className="flex items-center justify-between rounded-xl border border-indigo-500/20 bg-indigo-950/60 p-3 text-xs text-indigo-300">
-          <div className="flex items-center gap-2">
-            <span className="inline-block h-2 w-2 animate-ping rounded-full bg-indigo-400" />
+        <div role="status" className="rise flex items-center justify-between gap-3 rounded-2xl bg-white/5 px-4 py-3 text-sm text-ink ring-1 ring-tone/30">
+          <div className="flex items-center gap-2.5">
+            <span className="breathe h-2 w-2 shrink-0 rounded-full bg-tone" aria-hidden />
             <span>{notification}</span>
           </div>
           <button
             type="button"
             onClick={() => setNotification(null)}
-            className="text-slate-400 hover:text-white"
+            aria-label="Dismiss"
+            className="text-ink-faint transition hover:text-ink"
           >
             ✕
           </button>
@@ -68,23 +69,12 @@ export function AudioPanel() {
       ) : (
         <>
           {snippets.length === 0 && !error && (
-            <div className="rounded-2xl bg-slate-900 p-4 text-center text-xs text-slate-400 ring-1 ring-white/10">
-              Generating pre-rendered soothing phrases in cloned voice…
-            </div>
+            <p className="text-sm text-ink-faint">Preparing soothing phrases in your voice…</p>
           )}
-          {error && (
-            <div className="rounded-2xl bg-slate-900 p-4 text-xs text-rose-400 ring-1 ring-white/10">
-              {error}
-            </div>
-          )}
-          <SootheControls
-            engine={engine}
-            snapshot={snapshot}
-            voiceId={voiceId}
-            onChangeVoice={reset}
-          />
+          {error && <p className="text-sm text-rose-300">{error}</p>}
+          <SootheControls engine={engine} snapshot={snapshot} voiceId={voiceId} onChangeVoice={reset} />
         </>
       )}
-    </div>
+    </section>
   );
 }
