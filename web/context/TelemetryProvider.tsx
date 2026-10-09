@@ -17,7 +17,9 @@ import {
   wsUrl,
 } from "@/lib/config";
 import { startMockTelemetry, type MockTelemetrySource } from "@/lib/mockTelemetry";
+import { toneFor } from "@/lib/stateCopy";
 import { isTelemetry, type Telemetry } from "@/lib/types";
+import { useActivity, type ActivityEvent } from "@/lib/useActivity";
 
 export interface TelemetryContextValue {
   /** Most recent packet, or null before the first one arrives. */
@@ -29,6 +31,12 @@ export interface TelemetryContextValue {
   /** No packet received for STALE_AFTER_MS. */
   stale: boolean;
   mock: boolean;
+  /** State changes since the page opened, newest first. */
+  events: ActivityEvent[];
+  /** When the current state began (ms since epoch), as observed by this page. */
+  stateSince: number | null;
+  /** Desktop notifications for state changes (need https or localhost). */
+  alerts: { supported: boolean; enabled: boolean; set: (on: boolean) => Promise<void> };
   /** Forces RESTLESS for 15s (daemon endpoint, or the mock generator). */
   simulateRestless: () => Promise<void>;
 }
@@ -43,6 +51,7 @@ export function TelemetryProvider({ children }: { children: ReactNode }) {
   const [history, setHistory] = useState<Telemetry[]>([]);
   const [connected, setConnected] = useState(MOCK);
   const [stale, setStale] = useState(true);
+  const { events, stateSince, record, alerts } = useActivity();
   const lastMessageAt = useRef(0);
   const mockSource = useRef<MockTelemetrySource | null>(null);
 
@@ -51,7 +60,8 @@ export function TelemetryProvider({ children }: { children: ReactNode }) {
     setStale(false);
     setLatest(t);
     setHistory((prev) => [...prev.slice(-(HISTORY_LENGTH - 1)), t]);
-  }, []);
+    record(toneFor(t.state, false), t.camera);
+  }, [record]);
 
   // Data source: in-browser mock, or the daemon WebSocket with reconnect backoff.
   useEffect(() => {
@@ -102,10 +112,12 @@ export function TelemetryProvider({ children }: { children: ReactNode }) {
   // Staleness watchdog.
   useEffect(() => {
     const timer = setInterval(() => {
-      setStale(Date.now() - lastMessageAt.current > STALE_AFTER_MS);
+      const isStale = Date.now() - lastMessageAt.current > STALE_AFTER_MS;
+      setStale(isStale);
+      if (isStale && lastMessageAt.current > 0) record("offline");
     }, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [record]);
 
   const simulateRestless = useCallback(async () => {
     if (MOCK) {
@@ -139,7 +151,7 @@ export function TelemetryProvider({ children }: { children: ReactNode }) {
 
   return (
     <TelemetryContext.Provider
-      value={{ latest, history, connected, stale, mock: MOCK, simulateRestless }}
+      value={{ latest, history, connected, stale, mock: MOCK, events, stateSince, alerts, simulateRestless }}
     >
       {children}
     </TelemetryContext.Provider>

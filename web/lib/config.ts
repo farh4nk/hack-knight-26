@@ -1,5 +1,7 @@
 // Temporary product name; change it here only.
 export const APP_NAME = "CradleEcho";
+// Used in the UI copy ("Maya is sleeping soundly"). Make this a setting once onboarding exists.
+export const BABY_NAME = "Maya";
 
 const DAEMON_PORT = 8000;
 
