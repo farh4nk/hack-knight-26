@@ -9,6 +9,7 @@ dependencies = [
     "uvicorn[standard]",
     "opencv-python-headless",
     "numpy",
+    "pydantic-settings>=2.15.0",
 ]
 
 [dependency-groups]

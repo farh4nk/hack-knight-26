@@ -30,7 +30,7 @@ def test_healthz(test_app):
     with TestClient(test_app) as client:
         response = client.get("/healthz")
         assert response.status_code == 200
-        assert response.json() == {"status": "ok"}
+        assert response.json() == {"status": "ok", "source": "mock"}
 
 
 def test_api_state_schema(test_app):

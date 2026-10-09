@@ -5,10 +5,9 @@ import json
 import logging
 import os
 import shlex
-import sys
 import time
-from typing import List, Optional, Union
 
+from cradleecho.config import settings
 from cradleecho.sources.base import Reading
 
 logger = logging.getLogger(__name__)
@@ -19,14 +18,11 @@ class PresageVitalsSource:
 
     def __init__(
         self,
-        cmd: Optional[Union[str, List[str]]] = None,
+        cmd: str | list[str] | None = None,
         stale_timeout_s: float = 3.0,
     ) -> None:
         if cmd is None:
-            raw_cmd = os.getenv(
-                "CRADLEECHO_PRESAGE_CMD",
-                f"{sys.executable} presage_bridge/fake_bridge.py",
-            )
+            raw_cmd = settings.presage_cmd
             self._cmd_args = shlex.split(raw_cmd)
         elif isinstance(cmd, str):
             self._cmd_args = shlex.split(cmd)
@@ -34,12 +30,12 @@ class PresageVitalsSource:
             self._cmd_args = list(cmd)
 
         self._stale_timeout_s = stale_timeout_s
-        self._latest_reading: Optional[Reading] = None
-        self._last_received_time: Optional[float] = None
+        self._latest_reading: Reading | None = None
+        self._last_received_time: float | None = None
         self._running = False
-        self._proc: Optional[asyncio.subprocess.Process] = None
-        self._worker_task: Optional[asyncio.Task] = None
-        self._mode: Optional[str] = None
+        self._proc: asyncio.subprocess.Process | None = None
+        self._worker_task: asyncio.Task | None = None
+        self._mode: str | None = None
 
     async def start(self) -> None:
         if self._running:
@@ -53,7 +49,7 @@ class PresageVitalsSource:
             try:
                 self._proc.terminate()
                 await asyncio.wait_for(self._proc.wait(), timeout=1.5)
-            except (asyncio.TimeoutError, ProcessLookupError):
+            except (TimeoutError, ProcessLookupError):
                 try:
                     self._proc.kill()
                     await self._proc.wait()
@@ -69,7 +65,7 @@ class PresageVitalsSource:
                 pass
             self._worker_task = None
 
-    def set_forced_mode(self, mode: Optional[str]) -> None:
+    def set_forced_mode(self, mode: str | None) -> None:
         self._mode = mode
 
     def read(self) -> Reading:
@@ -99,11 +95,16 @@ class PresageVitalsSource:
         backoff = 1.0
         while self._running:
             try:
+                env = os.environ.copy()
+                if settings.presage_api_key:
+                    env["PRESAGE_API_KEY"] = settings.presage_api_key.get_secret_value()
+
                 logger.info("Spawning Presage bridge: %s", " ".join(self._cmd_args))
                 self._proc = await asyncio.create_subprocess_exec(
                     *self._cmd_args,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=None,  # Logs pass directly to parent stderr
+                    env=env,
                 )
 
                 while self._running and self._proc.stdout is not None:
@@ -119,6 +120,9 @@ class PresageVitalsSource:
                         motion_val = data.get("motion_index")
                         motion = float(motion_val) if motion_val is not None else None
                         timestamp = float(data.get("t", time.time()))
+
+                        if brpm == 0.0 and bpm == 0.0:
+                            conf = 0.0
 
                         self._latest_reading = Reading(
                             brpm=brpm,

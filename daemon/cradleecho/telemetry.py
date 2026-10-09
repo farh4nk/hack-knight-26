@@ -37,6 +37,9 @@ def format_telemetry_payload(
     }
 
 
+import time
+from cradleecho.config import settings
+
 class TelemetryHub:
     """Manages WebSocket subscribers and runs the 2 Hz telemetry loop."""
 
@@ -55,11 +58,16 @@ class TelemetryHub:
         self._clients: Set[WebSocket] = set()
         self._running = False
         self._loop_task: Optional[asyncio.Task] = None
+        self._forced_unstable_until: float = 0.0
         self._latest_payload: Dict[str, Any] = format_telemetry_payload(
-            state=classifier.current_state,
-            reading=Reading(brpm=24.0, bpm=120.0, confidence=0.90, motion_index=0.10),
-            motion_index=0.10,
+            state="SIGNAL_UNSTABLE",
+            reading=Reading(brpm=0.0, bpm=0.0, confidence=0.0, motion_index=0.0),
+            motion_index=0.0,
         )
+
+    def force_unstable(self, seconds: float) -> float:
+        self._forced_unstable_until = time.time() + seconds
+        return self._forced_unstable_until
 
     def get_latest_payload(self) -> Dict[str, Any]:
         """Return the most recently generated telemetry payload."""
@@ -85,13 +93,24 @@ class TelemetryHub:
             return
 
         message = json.dumps(payload)
-        dead_clients: Set[WebSocket] = set()
-
-        for ws in list(self._clients):
+        
+        async def _send(ws):
             try:
-                await ws.send_text(message)
+                await asyncio.wait_for(ws.send_text(message), timeout=1.0)
+                return ws, True
             except Exception:
-                dead_clients.add(ws)
+                return ws, False
+
+        results = await asyncio.gather(*[_send(ws) for ws in self._clients], return_exceptions=True)
+        
+        dead_clients: Set[WebSocket] = set()
+        for res in results:
+            if isinstance(res, tuple):
+                ws, success = res
+                if not success:
+                    dead_clients.add(ws)
+            else:
+                pass # exception raised
 
         for ws in dead_clients:
             self._clients.discard(ws)
@@ -106,10 +125,17 @@ class TelemetryHub:
         else:
             motion = self.camera.get_motion_index()
 
+        forced = time.time() < self._forced_unstable_until
+        cam_live = getattr(self.camera, "is_live", lambda: False)()
+        cam_brightness = getattr(self.camera, "get_brightness", lambda: None)()
+        gate = cam_live and cam_brightness is not None and cam_brightness < settings.min_brightness
+        
+        reading_confidence = 0.0 if forced or gate else reading.confidence
+
         reading_with_motion = Reading(
             brpm=reading.brpm,
             bpm=reading.bpm,
-            confidence=reading.confidence,
+            confidence=reading_confidence,
             motion_index=motion,
             timestamp=reading.timestamp,
         )
@@ -121,12 +147,24 @@ class TelemetryHub:
         return payload
 
     async def _run_loop(self) -> None:
+        loop = asyncio.get_running_loop()
+        next_deadline = loop.time() + self.interval_s
         while self._running:
             try:
                 await self.step()
             except Exception as e:
                 logger.error("Error in telemetry loop step: %s", e)
-            await asyncio.sleep(self.interval_s)
+            
+            now = loop.time()
+            if now > next_deadline + self.interval_s:
+                # >1 interval behind, skip ahead (no bursting)
+                next_deadline = now + self.interval_s
+            else:
+                while next_deadline <= now:
+                    next_deadline += self.interval_s
+            
+            delay = max(0.0, next_deadline - loop.time())
+            await asyncio.sleep(delay)
 
     async def start(self) -> None:
         """Start the background 2 Hz telemetry loop."""
