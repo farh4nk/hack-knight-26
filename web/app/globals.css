@@ -1,21 +1,78 @@
 @import "tailwindcss";
 
-/* Night theme: dark always, easy on the eyes at 3 a.m. */
+/* ---- Night-light theme ------------------------------------------------------------------ */
 :root {
-  --background: #020617; /* slate-950 */
-  --foreground: #e2e8f0; /* slate-200 */
   color-scheme: dark;
+  --bg-0: #0a0b15;
+  --bg-1: #11101d;
+  --ink: #f4ecdc; /* warm cream */
+  --ink-dim: #aaa395;
+  --ink-faint: #6f6a62;
+  --line: rgba(244, 236, 220, 0.1);
+}
+
+/* Registered so the glow can cross-fade smoothly when the baby's state changes. */
+@property --tone {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #4b5163;
+}
+@property --tone-soft {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: rgba(75, 81, 99, 0.14);
+}
+
+.night {
+  transition:
+    --tone 1.6s ease,
+    --tone-soft 1.6s ease;
+}
+.night[data-state="asleep"] { --tone: #86c5ae; --tone-soft: rgba(134, 197, 174, 0.2); }
+.night[data-state="drowsy"] { --tone: #a99bd8; --tone-soft: rgba(169, 155, 216, 0.2); }
+.night[data-state="restless"] { --tone: #f0b46a; --tone-soft: rgba(240, 180, 106, 0.22); }
+.night[data-state="awake"] { --tone: #ef8a76; --tone-soft: rgba(239, 138, 118, 0.2); }
+.night[data-state="unstable"] { --tone: #7d8597; --tone-soft: rgba(125, 133, 151, 0.16); }
+.night[data-state="offline"] { --tone: #4b5163; --tone-soft: rgba(75, 81, 99, 0.14); }
+
+.night-glow {
+  background:
+    radial-gradient(70% 50% at 50% 18%, var(--tone-soft), transparent 72%),
+    radial-gradient(45% 35% at 92% 100%, rgba(120, 110, 220, 0.09), transparent 70%),
+    linear-gradient(180deg, var(--bg-0), var(--bg-1));
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-fraunces), Georgia, serif;
+  --font-sans: var(--font-instrument), system-ui, sans-serif;
+  --color-ink: var(--ink);
+  --color-ink-dim: var(--ink-dim);
+  --color-ink-faint: var(--ink-faint);
+  --color-line: var(--line);
+  --color-tone: var(--tone);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  background: var(--bg-0);
+  color: var(--ink);
+  font-family: var(--font-instrument), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Headline swaps in gently when the state changes. */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.rise { animation: rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+
+@keyframes breathe {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+.breathe { animation: breathe 2.4s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .night { transition: none; }
+  .rise, .breathe { animation: none; }
 }

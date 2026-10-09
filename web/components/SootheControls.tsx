@@ -11,11 +11,11 @@ interface SootheControlsProps {
   onChangeVoice?: () => void;
 }
 
-const STATUS_LABELS: Record<string, { text: string; color: string }> = {
-  idle: { text: "Auto-Soothe Primed & Ready", color: "text-emerald-400" },
-  pending: { text: "Restlessness detected (4s gate)…", color: "text-amber-400" },
-  soothing: { text: "Soothing in your voice", color: "text-indigo-400" },
-  fading: { text: "Settled — smoothly fading audio", color: "text-sky-400" },
+const STATUS_LABELS: Record<string, string> = {
+  idle: "Ready. It steps in if restlessness continues.",
+  pending: "Restlessness noticed. Waiting a few seconds…",
+  soothing: "Soothing in your voice",
+  fading: "Settled. Fading out…",
 };
 
 export function SootheControls({ engine, snapshot, voiceId, onChangeVoice }: SootheControlsProps) {
@@ -33,7 +33,7 @@ export function SootheControls({ engine, snapshot, voiceId, onChangeVoice }: Soo
   }, [locked]);
 
   const minsLeft = Math.ceil((snapshot.cooldownUntil - now) / 60000);
-  const statusInfo = STATUS_LABELS[snapshot.status] || STATUS_LABELS.idle;
+  const status = STATUS_LABELS[snapshot.status] ?? STATUS_LABELS.idle;
 
   const handleTalkToBaby = async () => {
     if (!customText.trim() || talking) return;
@@ -50,80 +50,73 @@ export function SootheControls({ engine, snapshot, voiceId, onChangeVoice }: Soo
   };
 
   return (
-    <div className="rounded-2xl bg-slate-900 p-5 ring-1 ring-white/10">
+    <div>
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-slate-400">Auto-Soothe Pipeline</span>
-        <label className="flex cursor-pointer items-center gap-2 text-xs font-medium text-slate-300">
-          <input
-            type="checkbox"
-            checked={snapshot.enabled}
-            onChange={(e) => {
-              if (e.target.checked) engine.unlock();
-              engine.setEnabled(e.target.checked);
-            }}
-            className="h-4 w-4 rounded border-slate-700 bg-slate-800 text-indigo-600 focus:ring-indigo-500"
-          />
-          Enabled
-        </label>
-      </div>
-
-      {/* State Badge */}
-      <div className="mt-3 flex items-center justify-between rounded-xl bg-slate-800/80 p-3">
-        <div>
-          <div className={`text-xs font-semibold ${statusInfo.color}`}>
-            {snapshot.enabled ? statusInfo.text : "Auto-Soothe Disabled"}
-          </div>
-          {snapshot.snippet && active && (
-            <div className="mt-1 text-xs italic text-slate-300">
-              “{snapshot.snippet}”
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Lockout / Cooldown Indicator (Task 3.4) */}
-      {locked && !active && (
-        <div className="mt-2 flex items-center justify-between rounded-lg bg-amber-500/10 px-3 py-1.5 text-xs text-amber-400">
-          <span>Lockout: paused for {minsLeft}m to prevent infinite soothing</span>
-          <button
-            type="button"
-            onClick={() => engine.resetCooldown()}
-            className="font-medium underline hover:text-amber-300"
-          >
-            Reset
-          </button>
-        </div>
-      )}
-
-      {/* Instant Mute / Stop Soothe (Task 3.4) */}
-      <div className="mt-3">
+        <h2 className="font-display text-xl text-ink [font-variation-settings:'SOFT'_100]">Auto-soothe</h2>
         <button
           type="button"
-          onClick={() => engine.stop()}
-          disabled={!active && snapshot.status !== "pending"}
-          className="w-full rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-rose-500 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-600"
+          role="switch"
+          aria-checked={snapshot.enabled}
+          aria-label="Auto-soothe"
+          onClick={() => {
+            if (!snapshot.enabled) engine.unlock();
+            engine.setEnabled(!snapshot.enabled);
+          }}
+          className={`relative h-6 w-11 rounded-full transition-colors ${snapshot.enabled ? "bg-tone" : "bg-white/15"}`}
         >
-          Mute / Stop Soothe
+          <span
+            className={`absolute top-0.5 h-5 w-5 rounded-full bg-ink shadow transition-all ${snapshot.enabled ? "left-[1.375rem]" : "left-0.5"}`}
+          />
         </button>
       </div>
 
-      {/* Talk to Baby Live TTS */}
-      <div className="mt-4 border-t border-white/5 pt-3">
-        <span className="text-xs font-medium text-slate-400">Talk to Maya (Cloned Voice)</span>
-        <div className="mt-1.5 flex gap-2">
+      <p className="mt-3 text-sm text-ink-dim" role="status">
+        {snapshot.enabled ? status : "Auto-soothe is off."}
+      </p>
+      {snapshot.snippet && active && (
+        <p className="rise mt-2 font-display text-lg italic leading-snug text-ink [font-variation-settings:'SOFT'_100]">
+          “{snapshot.snippet}”
+        </p>
+      )}
+
+      {/* Cooldown lockout: stops it repeating if the baby is truly awake */}
+      {locked && !active && (
+        <p className="mt-3 text-sm text-ink-faint">
+          Paused for {minsLeft} min so it doesn’t repeat.{" "}
+          <button type="button" onClick={() => engine.resetCooldown()} className="underline underline-offset-4 hover:text-ink">
+            Reset
+          </button>
+        </p>
+      )}
+
+      <button
+        type="button"
+        onClick={() => engine.stop()}
+        disabled={!active && snapshot.status !== "pending"}
+        className="mt-4 w-full rounded-full px-4 py-2.5 text-sm text-rose-200 ring-1 ring-rose-300/35 transition hover:bg-rose-300/10 disabled:cursor-not-allowed disabled:text-ink-faint disabled:ring-white/10 disabled:hover:bg-transparent"
+      >
+        Mute / stop soothing
+      </button>
+
+      <div className="mt-6 border-t border-line pt-5">
+        <label htmlFor="talk" className="text-sm text-ink-dim">
+          Say something to Maya, in your voice
+        </label>
+        <div className="mt-2 flex gap-2">
           <input
+            id="talk"
             type="text"
             value={customText}
             onChange={(e) => setCustomText(e.target.value)}
-            placeholder="Type soothing words…"
-            className="flex-1 rounded-lg border border-white/10 bg-slate-800 px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:border-indigo-500 focus:outline-none"
+            placeholder="Shh, I’m right here…"
+            className="min-w-0 flex-1 rounded-xl bg-white/5 px-3.5 py-2 text-sm text-ink placeholder:text-ink-faint ring-1 ring-white/10 focus:outline-none focus:ring-tone/50"
             onKeyDown={(e) => e.key === "Enter" && handleTalkToBaby()}
           />
           <button
             type="button"
             onClick={handleTalkToBaby}
             disabled={!customText.trim() || talking}
-            className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-medium text-indigo-400 hover:bg-slate-700 disabled:opacity-50"
+            className="rounded-xl bg-ink px-4 py-2 text-sm font-medium text-[#0a0b15] transition hover:opacity-90 disabled:opacity-40"
           >
             {talking ? "Speaking…" : "Speak"}
           </button>
@@ -134,11 +127,12 @@ export function SootheControls({ engine, snapshot, voiceId, onChangeVoice }: Soo
         <button
           type="button"
           onClick={onChangeVoice}
-          className="mt-3 block text-center text-xs text-slate-500 underline hover:text-slate-400"
+          className="mt-4 text-sm text-ink-faint underline underline-offset-4 transition hover:text-ink"
         >
-          Re-record Parent Voice
+          Re-record my voice
         </button>
       )}
+      <p className="mt-5 text-xs text-ink-faint">Voice by ElevenLabs</p>
     </div>
   );
 }

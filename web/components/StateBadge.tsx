@@ -1,50 +1,21 @@
 "use client";
 
 import { useTelemetry } from "@/context/TelemetryProvider";
-import { unstableHint } from "@/lib/cameraHint";
-import type { SleepState } from "@/lib/types";
+import { copyFor, toneFor } from "@/lib/stateCopy";
 
-const BADGES: Record<SleepState, { label: string; className: string }> = {
-  ASLEEP: {
-    label: "Asleep",
-    className: "bg-emerald-500/90 text-emerald-950",
-  },
-  DROWSY: {
-    label: "Drowsy",
-    className: "bg-indigo-400/90 text-indigo-950",
-  },
-  RESTLESS: {
-    label: "Restless — Auto-Soothe Primed",
-    className: "bg-amber-400/95 text-amber-950 animate-pulse",
-  },
-  AWAKE: {
-    label: "Awake",
-    className: "bg-rose-500/95 text-white",
-  },
-  SIGNAL_UNSTABLE: {
-    label: "Signal Unstable", // hint appended at render time
-    className: "bg-slate-500/90 text-white",
-  },
-};
-
+/** Glass pill on the video: the live state at a glance. */
 export function StateBadge() {
   const { latest, connected, stale } = useTelemetry();
-
-  const badge =
-    !connected || stale || !latest
-      ? { label: "Disconnected — Waiting for Monitor", className: "bg-slate-800/90 text-slate-300" }
-      : latest.state === "SIGNAL_UNSTABLE"
-        ? { ...BADGES.SIGNAL_UNSTABLE, label: `Signal Unstable — ${unstableHint(latest.camera)}` }
-        : BADGES[latest.state];
+  const tone = toneFor(latest?.state, !connected || stale || !latest);
+  const { pill } = copyFor(tone, latest?.camera);
 
   return (
     <div
       role="status"
-      aria-live="polite"
-      className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-semibold shadow-lg backdrop-blur ${badge.className}`}
+      className="inline-flex items-center gap-2 rounded-full bg-black/40 px-3.5 py-1.5 text-sm font-medium text-ink ring-1 ring-white/15 backdrop-blur-md"
     >
-      <span className="h-2 w-2 rounded-full bg-current opacity-70" />
-      {badge.label}
+      <span className={`h-2 w-2 rounded-full bg-tone ${tone === "restless" ? "breathe" : ""}`} aria-hidden />
+      {pill}
     </div>
   );
 }
