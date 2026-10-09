@@ -16,12 +16,27 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import cv2
+import numpy as np
+
+STAMP_BITS = 40
+STAMP_BLOCK = 16  # px; big blocks survive JPEG compression
+
+
+def stamp_time(frame: np.ndarray) -> None:
+    """Burn the current time (ms, 40 bits) into the top row as black/white blocks.
+
+    scripts/measure_latency.py decodes it from the daemon's output to get true delay.
+    """
+    ms = int(time.time() * 1000) & ((1 << STAMP_BITS) - 1)
+    for i in range(STAMP_BITS):
+        bit = (ms >> (STAMP_BITS - 1 - i)) & 1
+        frame[0:STAMP_BLOCK, i * STAMP_BLOCK : (i + 1) * STAMP_BLOCK] = 255 if bit else 0
 
 
 class FrameGrabber(threading.Thread):
     """Reads the camera continuously and keeps the newest JPEG for all clients."""
 
-    def __init__(self, device: int, width: int, height: int) -> None:
+    def __init__(self, device: int, width: int, height: int, stamp: bool = False) -> None:
         super().__init__(daemon=True)
         self.cap = cv2.VideoCapture(device)
         if not self.cap.isOpened():
@@ -31,6 +46,7 @@ class FrameGrabber(threading.Thread):
             )
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+        self.stamp = stamp
         self.jpeg: bytes | None = None
         self.lock = threading.Lock()
 
@@ -40,6 +56,8 @@ class FrameGrabber(threading.Thread):
             if not ok:
                 time.sleep(0.1)
                 continue
+            if self.stamp and frame.shape[1] >= STAMP_BITS * STAMP_BLOCK:
+                stamp_time(frame)
             ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
             if ok:
                 with self.lock:
@@ -92,9 +110,12 @@ def main() -> None:
     parser.add_argument("--width", type=int, default=640)
     parser.add_argument("--height", type=int, default=480)
     parser.add_argument("--fps", type=float, default=30.0)
+    parser.add_argument(
+        "--stamp", action="store_true", help="burn capture time into each frame (for measure_latency.py)"
+    )
     args = parser.parse_args()
 
-    grabber = FrameGrabber(args.device, args.width, args.height)
+    grabber = FrameGrabber(args.device, args.width, args.height, args.stamp)
     grabber.start()
     server = ThreadingHTTPServer(("0.0.0.0", args.port), make_handler(grabber, args.fps))
     print(f"Publishing camera {args.device} at http://0.0.0.0:{args.port}/video", flush=True)

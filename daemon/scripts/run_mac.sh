@@ -5,6 +5,7 @@
 #   scripts/run_mac.sh --facegate      native, OpenCV face gate on (fake Presage bridge)
 #   scripts/run_mac.sh docker          Docker; host camera is streamed into the container
 #   scripts/run_mac.sh docker --presage  Docker with real Presage (needs PRESAGE_API_KEY in .env)
+#   scripts/run_mac.sh docker --stamp  also burn capture time into frames, for scripts/measure_latency.py
 #   scripts/run_mac.sh stop            stop everything this script started
 #
 # Native mode needs `uv`; Docker mode needs Docker Desktop (and uv for the camera publisher).
@@ -20,13 +21,15 @@ MODE=native
 FACEGATE=0
 PRESAGE=0
 STOP=0
+STAMP=0
 for arg in "$@"; do
   case "$arg" in
     docker) MODE=docker ;;
     stop) STOP=1 ;;
     --facegate) FACEGATE=1 ;;
     --presage) PRESAGE=1 ;;
-    -h|--help) sed -n 2,10p "$0"; exit 0 ;;
+    --stamp) STAMP=1 ;;
+    -h|--help) sed -n 2,12p "$0"; exit 0 ;;
     *) echo "Unknown argument: $arg (try --help)" >&2; exit 2 ;;
   esac
 done
@@ -106,7 +109,7 @@ cleanup() { stop_all; }
 trap cleanup EXIT INT TERM
 
 echo "Starting camera publisher on :$CAM_PORT (allow camera access if macOS asks)..."
-uv run python scripts/camera_publisher.py --port "$CAM_PORT" > "$RUN_DIR/publisher.log" 2>&1 &
+uv run python scripts/camera_publisher.py --port "$CAM_PORT" $([[ $STAMP -eq 1 ]] && echo --stamp) > "$RUN_DIR/publisher.log" 2>&1 &
 echo $! > "$RUN_DIR/publisher.pid"
 
 for _ in $(seq 1 40); do
