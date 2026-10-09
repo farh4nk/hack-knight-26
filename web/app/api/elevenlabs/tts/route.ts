@@ -57,7 +57,7 @@ export async function POST(req: Request) {
   if (!apiKey || apiKey === "your_elevenlabs_api_key_here" || voiceId.startsWith("mock_")) {
     console.info("[TTS Mock Fallback] Playing calming lullaby chime for text:", text);
     const chimeWav = generateLullabyChimeWav();
-    return new Response(chimeWav, {
+    return new Response(new Uint8Array(chimeWav), {
       headers: { "Content-Type": "audio/wav" },
     });
   }
