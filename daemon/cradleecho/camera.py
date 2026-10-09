@@ -1,12 +1,20 @@
 """Camera capture thread with frame-diff motion estimation and fallback frame."""
 
 import logging
+import os
 import threading
 import time
 from collections.abc import Callable
 
-import cv2
-import numpy as np
+# Network (HTTP/RTSP) sources go through OpenCV's ffmpeg backend, which buffers aggressively by
+# default and adds seconds of delay. Must be set before cv2 opens a capture; ignored by V4L2.
+os.environ.setdefault(
+    "OPENCV_FFMPEG_CAPTURE_OPTIONS",
+    "fflags;nobuffer|flags;low_delay|probesize;65536|analyzeduration;0",
+)
+
+import cv2  # noqa: E402
+import numpy as np  # noqa: E402
 
 from cradleecho.config import settings
 
@@ -85,6 +93,12 @@ class Camera:
         self._latest_jpeg: bytes = self._fallback_jpeg
         self._debug_viewers: int = 0
         self._latest_debug_jpeg: bytes = b""
+        self._frame_seq: int = 0  # bumped whenever a new JPEG is published
+
+        # Newest raw frame from the reader thread; older frames are dropped, never queued.
+        self._raw_cond = threading.Condition()
+        self._latest_raw: np.ndarray | None = None
+        self._raw_seq: int = 0
 
     def set_overlay(self, fn: Callable[[np.ndarray], None] | None) -> None:
         """Set a callback to draw an overlay on the encoded MJPEG frame."""
@@ -126,6 +140,11 @@ class Camera:
         with self._lock:
             return self._latest_debug_jpeg or self._latest_jpeg
 
+    def get_frame_seq(self) -> int:
+        """Counter that changes whenever a new JPEG is available (lets streams skip duplicates)."""
+        with self._lock:
+            return self._frame_seq
+
     def get_latest_frame_jpeg(self) -> bytes:
         """Return the most recent JPEG frame bytes."""
         with self._lock:
@@ -146,9 +165,38 @@ class Camera:
         with self._lock:
             return self._is_live
 
+    def _reader_loop(self, cap: "cv2.VideoCapture") -> None:
+        """Drain the camera as fast as it delivers, keeping only the newest frame.
+
+        Decoupling the read from the processing below is what keeps latency flat: if processing
+        is briefly slower than the camera, frames are dropped instead of queueing up inside
+        OpenCV/ffmpeg (which showed up as multi-second delay).
+        """
+        while not self._stop_event.is_set():
+            ret, frame = cap.read()
+            ok = bool(ret) and frame is not None
+            with self._raw_cond:
+                self._latest_raw = frame if ok else None
+                self._raw_seq += 1
+                self._raw_cond.notify_all()
+            if not ok:
+                time.sleep(0.05)
+
+    def _next_frame(self, seen_seq: int, timeout: float = 0.5) -> tuple[int, np.ndarray | None]:
+        """Block until the reader publishes a frame newer than `seen_seq`; None on stall."""
+        with self._raw_cond:
+            self._raw_cond.wait_for(
+                lambda: self._raw_seq != seen_seq or self._stop_event.is_set(), timeout=timeout
+            )
+            if self._raw_seq == seen_seq:
+                return seen_seq, None
+            return self._raw_seq, self._latest_raw
+
     def _capture_loop(self) -> None:
         cap: cv2.VideoCapture | None = None
+        reader: threading.Thread | None = None
         prev_gray: np.ndarray | None = None
+        seen_seq = 0
 
         # If dummy or none specified, keep serving fallback frame without trying hardware
         use_hardware = self._device not in ("none", "dummy", "synthetic", -1)
@@ -160,6 +208,11 @@ class Camera:
                 if cap is not None and cap.isOpened():
                     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
                     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # best effort; honoured by V4L2
+                    reader = threading.Thread(
+                        target=self._reader_loop, args=(cap,), name="CameraReaderThread", daemon=True
+                    )
+                    reader.start()
                 else:
                     logger.warning("Could not open camera device %s; using synthetic feed", self._device)
             else:
@@ -167,10 +220,8 @@ class Camera:
 
             while not self._stop_event.is_set():
                 frame = None
-                if cap is not None and cap.isOpened():
-                    ret, raw_frame = cap.read()
-                    if ret and raw_frame is not None:
-                        frame = raw_frame
+                if reader is not None:
+                    seen_seq, frame = self._next_frame(seen_seq)
 
                 if frame is not None:
                     for listener in self._frame_listeners:
@@ -179,10 +230,12 @@ class Camera:
                         except Exception:
                             logger.exception("Frame listener failed")
 
-                    # Compute frame-diff motion
+                    # Frame-diff motion on a half-size image: ~4x cheaper than full-size, and an
+                    # 11px blur at half-size matches the old 21px blur at full-size.
                     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                    
-                    mean_val = float(np.mean(gray))
+                    small = cv2.resize(gray, (320, 240), interpolation=cv2.INTER_AREA)
+
+                    mean_val = float(np.mean(small))
                     with self._lock:
                         if self._mean_brightness is None:
                             self._mean_brightness = mean_val
@@ -190,7 +243,7 @@ class Camera:
                             self._mean_brightness = 0.1 * mean_val + 0.9 * self._mean_brightness
                         self._is_live = True
 
-                    blurred = cv2.GaussianBlur(gray, (21, 21), 0)
+                    blurred = cv2.GaussianBlur(small, (11, 11), 0)
 
                     if prev_gray is not None:
                         diff = cv2.absdiff(prev_gray, blurred)
@@ -209,11 +262,9 @@ class Camera:
 
                     # Always encode the clean frame
                     ret_enc, enc_jpeg = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
-                    if ret_enc:
-                        with self._lock:
-                            self._latest_jpeg = enc_jpeg.tobytes()
 
                     # Conditionally encode debug frame
+                    debug_bytes = b""
                     if overlay_fn is not None and debug_count > 0:
                         view = frame.copy()
                         try:
@@ -223,13 +274,14 @@ class Camera:
 
                         ret_debug, enc_debug = cv2.imencode(".jpg", view, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
                         if ret_debug:
-                            with self._lock:
-                                self._latest_debug_jpeg = enc_debug.tobytes()
-                    else:
-                        with self._lock:
-                            self._latest_debug_jpeg = b""
+                            debug_bytes = enc_debug.tobytes()
 
-                    time.sleep(0.033)  # ~30 fps
+                    with self._lock:
+                        if ret_enc:
+                            self._latest_jpeg = enc_jpeg.tobytes()
+                        self._latest_debug_jpeg = debug_bytes
+                        self._frame_seq += 1
+                    # No fixed sleep: _next_frame() blocks until the camera has a new frame.
                 else:
                     # Fallback synthetic frame
                     with self._lock:
@@ -237,7 +289,8 @@ class Camera:
                         self._latest_debug_jpeg = b""
                         self._motion_index = 0.0
                         self._is_live = False
-                    time.sleep(0.05)  # 20 fps for synthetic fallback
+                    if reader is None:
+                        time.sleep(0.05)  # 20 fps for synthetic fallback
 
         except Exception as e:
             logger.error("Exception in camera capture loop: %s", e)
@@ -246,6 +299,10 @@ class Camera:
                 self._latest_debug_jpeg = b""
                 self._motion_index = 0.0
         finally:
-            if cap is not None:
+            self._stop_event.set()  # release the reader thread if we exited on an error
+            if reader is not None:
+                reader.join(timeout=2.0)
+            # Releasing while the reader is stuck in cap.read() (stalled network source) is unsafe.
+            if cap is not None and (reader is None or not reader.is_alive()):
                 cap.release()
             logger.info("Camera capture loop stopped")
