@@ -27,30 +27,25 @@ uv run pytest
 
 ## Presage
 
-To use the real Presage integration via SmartSpectra, install Docker (e.g., on Arch):
+Build and run via Docker Compose:
 ```bash
-sudo pacman -S docker && pkexec systemctl enable --now docker
+docker compose up --build
 ```
 
-Run the camera fanout script so both the Python daemon and Presage container can access the camera:
+Mock run:
 ```bash
-sudo scripts/camera_fanout.sh
+docker compose --profile mock up cradleecho-mock
 ```
 
-Before running with Presage, it is recommended to run the preflight script:
-```bash
-scripts/preflight.sh --presage
-```
+This requires `PRESAGE_API_KEY` in `.env`. Set `VIDEO_GID` and `RENDER_GID` from `getent group video render` (names resolve inside the image, not on the host; compose defaults 44/105 suit Raspberry Pi OS but verify).
 
-Build the Presage bridge Docker image:
-```bash
-docker build -t cradleecho-presage-bridge presage_bridge
-```
+Presage must run at ~30 fps (`CRADLEECHO_PRESAGE_FPS` default 30; below ~15 fps the SDK fails with `kProcessingFailed`).
 
-Run the daemon with Presage enabled (requires `PRESAGE_API_KEY`):
-```bash
-PRESAGE_API_KEY=your_api_key_here CRADLEECHO_SOURCE=presage CRADLEECHO_CAMERA=/dev/video10 CRADLEECHO_PRESAGE_CMD=presage_bridge/run_bridge.sh uv run uvicorn cradleecho.main:app --port 8000
-```
+Framing tips:
+- One face, centered at eye level
+- Upper chest visible
+- Well lit, still
+- SDK validation hints such as `kChestNotVisible` / `kFaceTooLow` appear in logs and state stays `SIGNAL_UNSTABLE` until it is happy.
 
 ## Configuration
 
@@ -59,13 +54,22 @@ The daemon is configured via environment variables or a `.env` file (parsed usin
 | Variable | Default | Description |
 | --- | --- | --- |
 | `PRESAGE_API_KEY` | None | API Key for Presage SmartSpectra backend. Required when source is `presage`. |
-| `CRADLEECHO_CAMERA` | `0` | Camera device index (`0`) or V4L2 device path (`/dev/video10`). Falls back gracefully to synthetic 'NO CAMERA' feed if unavailable. |
+| `CRADLEECHO_CAMERA` | `0` | Camera device index (`0`) or V4L2 device path (`/dev/video0`). Falls back gracefully to synthetic 'NO CAMERA' feed if unavailable. |
 | `CRADLEECHO_SOURCE` | `mock` | Vitals source: `mock` (realistic random walk) or `presage` (subadapter reading NDJSON stdout). |
-| `CRADLEECHO_PRESAGE_CMD` | `python presage_bridge/fake_bridge.py` | Command to launch the Presage bridge binary/script. |
+| `CRADLEECHO_PRESAGE_CMD` | `python presage_bridge/fake_bridge.py` | Command to launch the Presage bridge binary/script. The docker image sets `/opt/bridge/bridge --stdin 640x480`. |
+| `CRADLEECHO_PRESAGE_FPS` | `30` | Expected framerate for Presage SDK (below ~15 fps causes `kProcessingFailed`). |
 | `CRADLEECHO_HOST` | `0.0.0.0` | Host to bind the Uvicorn server to. |
 | `CRADLEECHO_PORT` | `8000` | Port to bind the server to. |
 | `CRADLEECHO_CORS_ORIGINS` | `*` | Comma-separated allowed CORS origins. |
 | `CRADLEECHO_MIN_BRIGHTNESS` | `35` | Minimum mean brightness threshold for the lighting gate. |
+| `CRADLEECHO_FACE_GATE` | `True` | Enable the Haar cascade face gate to suspend Presage SDK billing/CPU when nobody is in frame. |
+| `CRADLEECHO_GATE_CHEST_ROOM` | `1.75` | Required chest room under face, as multiple of face height. |
+| `CRADLEECHO_GATE_MIN_FACE` | `0.15` | Minimum face height as fraction of frame height. |
+| `CRADLEECHO_DEBUG_OVERLAY` | `False` | Render diagnostic overlay on the video feed showing face gate bounding boxes and state. |
+
+### Face gate
+
+When `CRADLEECHO_FACE_GATE` is enabled, an OpenCV Haar cascade face detector analyzes frames before sending them to the Presage bridge. The bridge is spawned only when a valid face (centered, appropriate size, visible chest room) is detected continuously for 2 seconds. When the face is lost for 10 seconds, the bridge process is terminated to save CPU and credits, and the system reports `SIGNAL_UNSTABLE`.
 
 ## Endpoints
 
@@ -92,3 +96,18 @@ The daemon is configured via environment variables or a `.env` file (parsed usin
 ```
 
 Valid states: `ASLEEP | DROWSY | RESTLESS | AWAKE | SIGNAL_UNSTABLE`
+
+## Raspberry Pi 4
+
+Pi OS 64-bit + Docker:
+1. Copy `.env`
+2. Run `docker compose up -d`
+3. Open `http://<pi-ip>:8000/video_feed`
+
+Build the arm64 image on the laptop:
+```bash
+docker run --privileged --rm tonistiigi/binfmt --install arm64
+docker buildx build --platform linux/arm64 -t cradleecho-daemon .
+docker save cradleecho-daemon | ssh pi docker load
+```
+Note: arm64 is NOT yet tested.

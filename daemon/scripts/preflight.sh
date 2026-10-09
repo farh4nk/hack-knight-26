@@ -16,27 +16,11 @@ done
 
 echo "Running preflight checks..."
 
-# Check /dev/video10
-if [ -c /dev/video10 ]; then
-    echo "PASS: /dev/video10 exists"
+# Check /dev/video0
+if [ -c /dev/video0 ]; then
+    echo "PASS: /dev/video0 exists"
 else
-    echo "WARN: /dev/video10 not found"
-    [ $run_presage_checks -eq 1 ] && fail_count=$((fail_count + 1))
-fi
-
-# Check /dev/video11
-if [ -c /dev/video11 ]; then
-    echo "PASS: /dev/video11 exists"
-else
-    echo "WARN: /dev/video11 not found"
-    [ $run_presage_checks -eq 1 ] && fail_count=$((fail_count + 1))
-fi
-
-# Check v4l2loopback
-if lsmod | grep -q "v4l2loopback"; then
-    echo "PASS: v4l2loopback module loaded"
-else
-    echo "WARN: v4l2loopback module not loaded"
+    echo "WARN: /dev/video0 not found"
     [ $run_presage_checks -eq 1 ] && fail_count=$((fail_count + 1))
 fi
 
@@ -53,11 +37,11 @@ else
     [ $run_presage_checks -eq 1 ] && fail_count=$((fail_count + 1))
 fi
 
-# Check Presage bridge image
-if docker image inspect cradleecho-presage-bridge >/dev/null 2>&1; then
-    echo "PASS: docker image cradleecho-presage-bridge found"
+# Check daemon image
+if docker image inspect cradleecho-daemon >/dev/null 2>&1; then
+    echo "PASS: docker image cradleecho-daemon found"
 else
-    echo "WARN: docker image cradleecho-presage-bridge not found"
+    echo "WARN: docker image cradleecho-daemon not found"
     [ $run_presage_checks -eq 1 ] && fail_count=$((fail_count + 1))
 fi
 
