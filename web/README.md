@@ -21,7 +21,8 @@ npm run dev                  # http://localhost:3000
 ## Daemon endpoints used
 
 - `GET  /video_feed`: MJPEG stream
-- `WS   /ws/telemetry`: telemetry JSON at 2 Hz (see `lib/types.ts`)
+- `GET  /video_feed/debug`: same stream with the daemon's face-gate and vitals overlay (the "Debug overlay" toggle under the feed)
+- `WS   /ws/telemetry`: telemetry JSON at 2 Hz (see `lib/types.ts`). The optional `camera` object drives the status chips under the feed, and its `sdk_hint` replaces the generic text on the Signal Unstable badge
 - `POST /api/simulate-restless`: forces RESTLESS for 15s
 
 ## Reading telemetry from your own component (Dev 3, Dev 4)

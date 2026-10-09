@@ -12,11 +12,31 @@ export interface Vitals {
   confidence: number;
 }
 
+export type CameraGate = "OPEN" | "CLOSED" | "DISABLED";
+
+export type CameraFraming =
+  | "OK"
+  | "NO_FACE"
+  | "MULTIPLE_FACES"
+  | "TOO_SMALL"
+  | "OFF_CENTER"
+  | "NO_CHEST_ROOM"
+  | "UNKNOWN";
+
+export interface CameraStatus {
+  live: boolean; // false = daemon is serving a synthetic fallback feed
+  gate: CameraGate; // OPEN = Presage session running
+  framing: CameraFraming;
+  sdk_code: string | null; // latest Presage validation code, e.g. "kFaceTooLow"
+  sdk_hint: string | null; // human-readable fix, e.g. "Move up, or tilt the camera down."
+}
+
 export interface Telemetry {
   timestamp: string; // ISO 8601
   state: SleepState;
   vitals: Vitals;
   motion_index: number;
+  camera?: CameraStatus; // additive; older daemons omit it
 }
 
 export const SLEEP_STATES: readonly SleepState[] = [
