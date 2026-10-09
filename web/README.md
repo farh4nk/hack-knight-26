@@ -13,10 +13,13 @@ npm run dev                  # http://localhost:3000
 
 | Env var | Default | Meaning |
 |---|---|---|
-| `NEXT_PUBLIC_DAEMON_URL` | `http://localhost:8000` | Dev 1's daemon. Use `http://<pi-ip>:8000` when it runs on the Pi |
+| `NEXT_PUBLIC_DAEMON_URL` | unset | Dev 1's daemon. Unset = the host that served the page, port 8000, so the UI works from any device (a laptop opening `http://<pi>:3000` reaches the Pi's daemon, not its own). Set it only to point somewhere else |
+| `NEXT_PUBLIC_ANALYTICS_URL` | unset | Dev 4's analytics API. Unset = the page's host, port 8001 |
 | `NEXT_PUBLIC_MOCK` | `0` | `1` = fake telemetry generated in the browser, no daemon needed |
 
 `NEXT_PUBLIC_*` values are baked in at build time. Restart `npm run dev` after changing them.
+
+On the Pi the UI ships as a Docker image; see [docs/pi-setup.md](../docs/pi-setup.md).
 
 ## Daemon endpoints used
 
