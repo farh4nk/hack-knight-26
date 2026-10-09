@@ -1,13 +1,14 @@
 """Camera capture thread with frame-diff motion estimation and fallback frame."""
 
 import logging
-import os
 import threading
 import time
-from typing import Optional, Union
+from collections.abc import Callable
 
 import cv2
 import numpy as np
+
+from cradleecho.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -58,26 +59,38 @@ def create_synthetic_frame(text: str = "NO CAMERA") -> np.ndarray:
 class Camera:
     """Single shared background camera capture thread."""
 
-    def __init__(self, device: Optional[Union[int, str]] = None) -> None:
+    def __init__(self, device: int | str | None = None) -> None:
         if device is None:
-            raw_dev = os.getenv("CRADLEECHO_CAMERA", "0")
+            raw_dev = settings.camera
             if raw_dev.isdigit():
-                self._device: Union[int, str] = int(raw_dev)
+                self._device: int | str = int(raw_dev)
             else:
                 self._device = raw_dev
         else:
             self._device = device
 
         self._motion_index: float = 0.0
+        self._mean_brightness: float | None = None
+        self._is_live: bool = False
         self._lock = threading.Lock()
+        self._frame_listeners: list[Callable[[np.ndarray], None]] = []
         self._stop_event = threading.Event()
-        self._thread: Optional[threading.Thread] = None
+        self._thread: threading.Thread | None = None
+        self._overlay_fn: Callable[[np.ndarray], None] | None = None
 
         # Pre-generate synthetic fallback frame
         fallback_mat = create_synthetic_frame("NO CAMERA")
         success, encoded = cv2.imencode(".jpg", fallback_mat, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
         self._fallback_jpeg: bytes = encoded.tobytes() if success else b""
         self._latest_jpeg: bytes = self._fallback_jpeg
+        self._debug_viewers: int = 0
+        self._latest_debug_jpeg: bytes = b""
+
+    def set_overlay(self, fn: Callable[[np.ndarray], None] | None) -> None:
+        """Set a callback to draw an overlay on the encoded MJPEG frame."""
+        with self._lock:
+            self._overlay_fn = fn
+
 
     def start(self) -> None:
         """Start the background capture thread."""
@@ -94,6 +107,25 @@ class Camera:
             self._thread.join(timeout=2.0)
             self._thread = None
 
+    def add_frame_listener(self, listener: Callable[[np.ndarray], None]) -> None:
+        """Register a callback receiving each live BGR frame on the capture thread.
+
+        Listeners must return quickly and never block.
+        """
+        self._frame_listeners.append(listener)
+
+    def acquire_debug(self) -> None:
+        with self._lock:
+            self._debug_viewers += 1
+
+    def release_debug(self) -> None:
+        with self._lock:
+            self._debug_viewers = max(0, self._debug_viewers - 1)
+
+    def get_latest_debug_jpeg(self) -> bytes:
+        with self._lock:
+            return self._latest_debug_jpeg or self._latest_jpeg
+
     def get_latest_frame_jpeg(self) -> bytes:
         """Return the most recent JPEG frame bytes."""
         with self._lock:
@@ -104,9 +136,19 @@ class Camera:
         with self._lock:
             return self._motion_index
 
+    def get_brightness(self) -> float | None:
+        """Return the current smoothed brightness (0-255)."""
+        with self._lock:
+            return self._mean_brightness
+
+    def is_live(self) -> bool:
+        """Return whether real hardware frames are arriving."""
+        with self._lock:
+            return self._is_live
+
     def _capture_loop(self) -> None:
-        cap: Optional[cv2.VideoCapture] = None
-        prev_gray: Optional[np.ndarray] = None
+        cap: cv2.VideoCapture | None = None
+        prev_gray: np.ndarray | None = None
 
         # If dummy or none specified, keep serving fallback frame without trying hardware
         use_hardware = self._device not in ("none", "dummy", "synthetic", -1)
@@ -131,8 +173,23 @@ class Camera:
                         frame = raw_frame
 
                 if frame is not None:
+                    for listener in self._frame_listeners:
+                        try:
+                            listener(frame)
+                        except Exception:
+                            logger.exception("Frame listener failed")
+
                     # Compute frame-diff motion
                     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                    
+                    mean_val = float(np.mean(gray))
+                    with self._lock:
+                        if self._mean_brightness is None:
+                            self._mean_brightness = mean_val
+                        else:
+                            self._mean_brightness = 0.1 * mean_val + 0.9 * self._mean_brightness
+                        self._is_live = True
+
                     blurred = cv2.GaussianBlur(gray, (21, 21), 0)
 
                     if prev_gray is not None:
@@ -146,23 +203,47 @@ class Camera:
                             self._motion_index = 0.3 * motion_val + 0.7 * self._motion_index
                     prev_gray = blurred
 
+                    with self._lock:
+                        overlay_fn = self._overlay_fn
+                        debug_count = self._debug_viewers
+
+                    # Always encode the clean frame
                     ret_enc, enc_jpeg = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
                     if ret_enc:
                         with self._lock:
                             self._latest_jpeg = enc_jpeg.tobytes()
+
+                    # Conditionally encode debug frame
+                    if overlay_fn is not None and debug_count > 0:
+                        view = frame.copy()
+                        try:
+                            overlay_fn(view)
+                        except Exception:
+                            logger.exception("Overlay failed")
+
+                        ret_debug, enc_debug = cv2.imencode(".jpg", view, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
+                        if ret_debug:
+                            with self._lock:
+                                self._latest_debug_jpeg = enc_debug.tobytes()
+                    else:
+                        with self._lock:
+                            self._latest_debug_jpeg = b""
 
                     time.sleep(0.033)  # ~30 fps
                 else:
                     # Fallback synthetic frame
                     with self._lock:
                         self._latest_jpeg = self._fallback_jpeg
+                        self._latest_debug_jpeg = b""
                         self._motion_index = 0.0
+                        self._is_live = False
                     time.sleep(0.05)  # 20 fps for synthetic fallback
 
         except Exception as e:
             logger.error("Exception in camera capture loop: %s", e)
             with self._lock:
                 self._latest_jpeg = self._fallback_jpeg
+                self._latest_debug_jpeg = b""
                 self._motion_index = 0.0
         finally:
             if cap is not None:

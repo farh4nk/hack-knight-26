@@ -91,11 +91,26 @@ All four developers should build against this standard WebSocket telemetry paylo
     "bpm": 118,
     "confidence": 0.88
   },
-  "motion_index": 0.72
+  "motion_index": 0.72,
+  "camera": {
+    "live": true,
+    "gate": "OPEN",
+    "framing": "OK",
+    "sdk_code": "kFaceTooLow",
+    "sdk_hint": "Move up, or tilt the camera down."
+  }
 }
 ```
 
 Valid states: `ASLEEP | DROWSY | RESTLESS | AWAKE | SIGNAL_UNSTABLE`
+
+*Note: The `camera` object is additive/backward compatible, and `state` valid values remain unchanged.*
+**Camera fields:**
+- `live` (bool): `true` when capturing real frames, `false` if synthetic fallback
+- `gate` (string): `OPEN`, `CLOSED`, or `DISABLED`
+- `framing` (string): `OK`, `NO_FACE`, `MULTIPLE_FACES`, `TOO_SMALL`, `OFF_CENTER`, `NO_CHEST_ROOM`, or `UNKNOWN`
+- `sdk_code` (string | null): latest Presage validation error code (e.g. `kFaceTooLow`), or `null`
+- `sdk_hint` (string | null): human-readable Presage fix instruction, or `null`
 
 ## Team responsibilities
 
@@ -103,14 +118,15 @@ Valid states: `ASLEEP | DROWSY | RESTLESS | AWAKE | SIGNAL_UNSTABLE`
 
 Deliverable: a local service that streams video and emits parsed biometric states.
 
-- [ ] Task 1.1 — Video capture & stream: set up a FastAPI service with an MJPEG streaming endpoint at `/video_feed` using OpenCV (`cv2.VideoCapture(0)`).
-- [ ] Task 1.2 — Presage integration: connect the Presage SDK (SmartSpectra) to pull breathing rate (BrPM), pulse rate (BPM), and tracking confidence. Fallback: write a mock telemetry generator first so Dev 2 is not blocked.
-- [ ] Task 1.3 — Sleep state classifier: implement the rolling state machine:
+- [x] Task 1.1 — Video capture & stream: set up a FastAPI service with an MJPEG streaming endpoint at `/video_feed` using OpenCV (`cv2.VideoCapture(0)`).
+- [x] Task 1.2 — Presage integration: connect the Presage SDK (SmartSpectra) to pull breathing rate (BrPM), pulse rate (BPM), and tracking confidence. Fallback: write a mock telemetry generator first so Dev 2 is not blocked.
+- [x] Task 1.3 — Sleep state classifier: implement the rolling state machine:
   - If confidence < 0.40 => `SIGNAL_UNSTABLE`
   - If BrPM is stable (20–30) with low motion => `ASLEEP`
   - If BrPM spikes by > 25% or motion is high => `RESTLESS`
-- [ ] Task 1.4 — Stage demo trigger: create a manual REST endpoint, `POST /api/simulate-restless`, that forces the state machine to `RESTLESS` for 15 seconds.
-- [ ] Task 1.5 — WebSocket server: broadcast the telemetry JSON over `ws://localhost:8000/ws/telemetry` at 2 Hz.
+- [x] Task 1.4 — Stage demo trigger: create a manual REST endpoint, `POST /api/simulate-restless`, that forces the state machine to `RESTLESS` for 15 seconds.
+- [x] Task 1.5 — WebSocket server: broadcast the telemetry JSON over `ws://localhost:8000/ws/telemetry` at 2 Hz.
+- [ ] Task 1.6 - Dockerize the daemon and package it with LinuxKit for usage on a raspberry pi
 
 ### Dev 2: Frontend & real-time dashboard (Next.js / Tailwind)
 

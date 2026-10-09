@@ -1,11 +1,10 @@
 """CradleEcho Edge Daemon FastAPI application."""
 
 import asyncio
-from contextlib import asynccontextmanager
-from datetime import datetime, timezone
 import logging
-import os
-from typing import AsyncGenerator, Optional
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from cradleecho.camera import Camera
 from cradleecho.classifier import SleepStateClassifier
+from cradleecho.config import settings
 from cradleecho.sources.base import VitalsSource
 from cradleecho.sources.mock import MockVitalsSource
 from cradleecho.sources.presage import PresageVitalsSource
@@ -28,8 +28,11 @@ class SimulateRestlessRequest(BaseModel):
 
 
 def build_source() -> VitalsSource:
-    source_type = os.getenv("CRADLEECHO_SOURCE", "mock").lower()
+    source_type = settings.source.lower()
     if source_type == "presage":
+        if not settings.presage_api_key:
+            logger.warning("PRESAGE_API_KEY is missing; falling back to MockVitalsSource")
+            return MockVitalsSource()
         logger.info("Initializing Presage source")
         return PresageVitalsSource()
     logger.info("Initializing Mock vitals source")
@@ -37,14 +40,38 @@ def build_source() -> VitalsSource:
 
 
 def create_app(
-    camera: Optional[Camera] = None,
-    source: Optional[VitalsSource] = None,
-    classifier: Optional[SleepStateClassifier] = None,
+    camera: Camera | None = None,
+    source: VitalsSource | None = None,
+    classifier: SleepStateClassifier | None = None,
 ) -> FastAPI:
     cam = camera or Camera()
     src = source or build_source()
     clsf = classifier or SleepStateClassifier()
+    gate = None
+    if isinstance(src, PresageVitalsSource) and src.wants_frames:
+        if settings.face_gate:
+            from cradleecho.facegate import FaceGate
+            gate = FaceGate(
+                chest_room=settings.gate_chest_room,
+                min_face_frac=settings.gate_min_face_frac,
+            )
+            src.set_gate(gate)
+        cam.add_frame_listener(src.push_frame)
     hub = TelemetryHub(cam, src, clsf, interval_s=0.5)
+
+    from cradleecho.overlay import draw_vitals_panel
+    def _composite_overlay(frame):
+        if gate is not None:
+            gate.draw_overlay(frame)
+        hint = getattr(src, 'validation_hint', '')
+        session_running = src.session_running if isinstance(src, PresageVitalsSource) else None
+        draw_vitals_panel(
+            frame,
+            hub.get_latest_payload(),
+            sdk_hint=hint,
+            session_running=session_running,
+        )
+    cam.set_overlay(_composite_overlay)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -61,10 +88,11 @@ def create_app(
     app = FastAPI(title="CradleEcho Edge Daemon", lifespan=lifespan)
 
     # CORS configuration
+    origins = [orig.strip() for orig in settings.cors_origins.split(",") if orig.strip()]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
+        allow_origins=origins,
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -74,35 +102,52 @@ def create_app(
     app.state.source = src
     app.state.classifier = clsf
     app.state.hub = hub
+    app.state.source_name = "presage" if isinstance(src, PresageVitalsSource) else "mock"
+    app.state.revert_task = None
 
     @app.get("/healthz")
     async def healthz():
-        return {"status": "ok"}
+        return {"status": "ok", "source": app.state.source_name}
 
     @app.get("/api/state")
     async def get_state():
         return hub.get_latest_payload()
 
     @app.post("/api/simulate-restless")
-    async def simulate_restless(req: Optional[SimulateRestlessRequest] = None):
+    async def simulate_restless(req: SimulateRestlessRequest | None = None):
         seconds = req.seconds if req is not None else 15.0
         expiry_epoch = clsf.force_restless(duration_s=seconds)
         src.set_forced_mode("RESTLESS")
 
+        if getattr(app.state, "revert_task", None):
+            app.state.revert_task.cancel()
+
         # Schedule resetting source mode after duration
         async def _revert():
-            await asyncio.sleep(seconds)
-            src.set_forced_mode(None)
+            try:
+                await asyncio.sleep(seconds)
+                src.set_forced_mode(None)
+            except asyncio.CancelledError:
+                pass
 
-        asyncio.create_task(_revert())
+        app.state.revert_task = asyncio.create_task(_revert())
         await hub.step()
 
-        expiry_dt = datetime.fromtimestamp(expiry_epoch, tz=timezone.utc)
+        expiry_dt = datetime.fromtimestamp(expiry_epoch, tz=UTC)
+        iso_str = expiry_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+        return JSONResponse({"forced_until": iso_str})
+
+    @app.post("/api/simulate-unstable")
+    async def simulate_unstable(req: SimulateRestlessRequest | None = None):
+        seconds = req.seconds if req is not None else 15.0
+        expiry_epoch = hub.force_unstable(seconds)
+        await hub.step()
+        expiry_dt = datetime.fromtimestamp(expiry_epoch, tz=UTC)
         iso_str = expiry_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
         return JSONResponse({"forced_until": iso_str})
 
     @app.get("/video_feed")
-    async def video_feed(request: Request, limit: Optional[int] = None):
+    async def video_feed(request: Request, limit: int | None = None):
         async def mjpeg_generator() -> AsyncGenerator[bytes, None]:
             count = 0
             try:
@@ -121,6 +166,34 @@ def create_app(
                     await asyncio.sleep(0.04)  # ~25 fps
             except (asyncio.CancelledError, GeneratorExit):
                 return
+
+        return StreamingResponse(
+            mjpeg_generator(),
+            media_type="multipart/x-mixed-replace; boundary=frame",
+        )
+
+    @app.get("/video_feed/debug")
+    async def video_feed_debug(request: Request, limit: int | None = None):
+        async def mjpeg_generator() -> AsyncGenerator[bytes, None]:
+            cam.acquire_debug()
+            try:
+                count = 0
+                while limit is not None or not await request.is_disconnected():
+                    frame_bytes = cam.get_latest_debug_jpeg()
+                    yield (
+                        b"--frame\r\n"
+                        b"Content-Type: image/jpeg\r\n\r\n"
+                        + frame_bytes
+                        + b"\r\n"
+                    )
+                    count += 1
+                    if limit is not None and count >= limit:
+                        break
+                    await asyncio.sleep(0.04)  # ~25 fps
+            except (asyncio.CancelledError, GeneratorExit):
+                return
+            finally:
+                cam.release_debug()
 
         return StreamingResponse(
             mjpeg_generator(),

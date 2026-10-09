@@ -1,0 +1,39 @@
+services:
+  cradleecho:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    devices:
+      - /dev/video0:/dev/video0
+      - /dev/dri:/dev/dri
+    group_add:
+      # Numeric host GIDs: names resolve inside the image, not on the host.
+      # Set VIDEO_GID / RENDER_GID in .env or the shell (`getent group video render`).
+      - "${VIDEO_GID:-44}"
+      - "${RENDER_GID:-105}"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')\""]
+
+  cradleecho-mock:
+    build: .
+    profiles:
+      - mock
+    environment:
+      - CRADLEECHO_SOURCE=mock
+    ports:
+      - "8000:8000" # NOTE: This conflicts with the main cradleecho service on port 8000
+    env_file:
+      - .env
+    devices:
+      - /dev/video0:/dev/video0
+    group_add:
+      # Numeric host GIDs: names resolve inside the image, not on the host.
+      # Set VIDEO_GID / RENDER_GID in .env or the shell (`getent group video render`).
+      - "${VIDEO_GID:-44}"
+      - "${RENDER_GID:-105}"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')\""]

@@ -7,8 +7,9 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi",
     "uvicorn[standard]",
-    "opencv-python-headless",
+    "opencv-python-headless>=4.10,<5",
     "numpy",
+    "pydantic-settings>=2.15.0",
 ]
 
 [dependency-groups]

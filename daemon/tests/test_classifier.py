@@ -175,3 +175,145 @@ def test_force_restless_and_expiry():
     assert clf.update(calm) == STATE_RESTLESS
     clock.advance(0.5)
     assert clf.update(calm) == STATE_ASLEEP
+
+def test_boundary_confidence():
+    clock = FakeClock()
+    clf = SleepStateClassifier(clock=clock.now)
+
+    # Establish baseline asleep
+    clf.update(Reading(brpm=24.0, bpm=120.0, confidence=0.90, motion_index=0.10))
+    
+    # 0.40 is stable
+    clock.advance(0.5)
+    assert clf.update(Reading(brpm=24.0, bpm=120.0, confidence=0.40, motion_index=0.10)) == STATE_ASLEEP
+    
+    # 0.39 is unstable
+    clock.advance(0.5)
+    assert clf.update(Reading(brpm=24.0, bpm=120.0, confidence=0.39, motion_index=0.10)) == STATE_SIGNAL_UNSTABLE
+
+def test_boundary_brpm():
+    clock = FakeClock()
+    clf = SleepStateClassifier(clock=clock.now)
+    
+    # 20.0 ASLEEP
+    clf.update(Reading(brpm=20.0, bpm=120.0, confidence=0.90, motion_index=0.10))
+    clock.advance(0.5)
+    assert clf.update(Reading(brpm=20.0, bpm=120.0, confidence=0.90, motion_index=0.10)) == STATE_ASLEEP
+    
+    # 19.9 is DROWSY
+    clock.advance(0.5)
+    clf.update(Reading(brpm=19.9, bpm=120.0, confidence=0.90, motion_index=0.10))
+    clock.advance(0.5)
+    assert clf.update(Reading(brpm=19.9, bpm=120.0, confidence=0.90, motion_index=0.10)) == STATE_DROWSY
+    
+    # Reset to ASLEEP
+    clock.advance(0.5)
+    clf.update(Reading(brpm=24.0, bpm=120.0, confidence=0.90, motion_index=0.10))
+    clock.advance(0.5)
+    clf.update(Reading(brpm=24.0, bpm=120.0, confidence=0.90, motion_index=0.10))
+    
+    # 30.0 ASLEEP
+    clock.advance(0.5)
+    clf.update(Reading(brpm=30.0, bpm=120.0, confidence=0.90, motion_index=0.10))
+    clock.advance(0.5)
+    assert clf.update(Reading(brpm=30.0, bpm=120.0, confidence=0.90, motion_index=0.10)) == STATE_ASLEEP
+    
+    # 30.1 is RESTLESS (spike from 24, but even from 30, it is > 30 so it's a spike/restless)
+    # Wait, the spec says "19.9/30.1 not". Let's check. 
+    # If BrPM > 30, it might be RESTLESS or AWAKE.
+    clock.advance(0.5)
+    clf.update(Reading(brpm=30.1, bpm=120.0, confidence=0.90, motion_index=0.10))
+    clock.advance(0.5)
+    assert clf.update(Reading(brpm=30.1, bpm=120.0, confidence=0.90, motion_index=0.10)) != STATE_ASLEEP
+
+def test_boundary_spike():
+    # Exactly 25% spike (24.0 * 1.25 = 30.0) -> not RESTLESS
+    clock = FakeClock()
+    clf = SleepStateClassifier(clock=clock.now)
+    clf.update(Reading(brpm=24.0, bpm=120.0, confidence=0.90, motion_index=0.10))
+    clock.advance(0.5)
+    clf.update(Reading(brpm=24.0, bpm=120.0, confidence=0.90, motion_index=0.10))
+    
+    clock.advance(0.5)
+    clf.update(Reading(brpm=30.0, bpm=120.0, confidence=0.90, motion_index=0.10))
+    clock.advance(0.5)
+    assert clf.update(Reading(brpm=30.0, bpm=120.0, confidence=0.90, motion_index=0.10)) == STATE_ASLEEP
+    
+    # Just over 25% (30.0001) -> RESTLESS
+    clock2 = FakeClock()
+    clf2 = SleepStateClassifier(clock=clock2.now)
+    clf2.update(Reading(brpm=24.0, bpm=120.0, confidence=0.90, motion_index=0.10))
+    clock2.advance(0.5)
+    clf2.update(Reading(brpm=24.0, bpm=120.0, confidence=0.90, motion_index=0.10))
+    
+    clock2.advance(0.5)
+    clf2.update(Reading(brpm=30.0001, bpm=120.0, confidence=0.90, motion_index=0.10))
+    clock2.advance(0.5)
+    assert clf2.update(Reading(brpm=30.0001, bpm=120.0, confidence=0.90, motion_index=0.10)) == STATE_RESTLESS
+
+def test_boundary_motion():
+    clock = FakeClock()
+    clf = SleepStateClassifier(clock=clock.now)
+    
+    # Establish baseline asleep
+    clf.update(Reading(brpm=24.0, bpm=120.0, confidence=0.90, motion_index=0.10))
+    clock.advance(0.5)
+    clf.update(Reading(brpm=24.0, bpm=120.0, confidence=0.90, motion_index=0.10))
+    
+    # Motion 0.60 -> DROWSY (because it is < 0.85 and <= 0.60, but not < 0.30)
+    clock.advance(0.5)
+    clf.update(Reading(brpm=24.0, bpm=120.0, confidence=0.90, motion_index=0.60))
+    clock.advance(0.5)
+    assert clf.update(Reading(brpm=24.0, bpm=120.0, confidence=0.90, motion_index=0.60)) == STATE_DROWSY
+    
+    # Motion 0.61 -> RESTLESS
+    clock.advance(0.5)
+    clf.update(Reading(brpm=24.0, bpm=120.0, confidence=0.90, motion_index=0.61))
+    clock.advance(0.5)
+    assert clf.update(Reading(brpm=24.0, bpm=120.0, confidence=0.90, motion_index=0.61)) == STATE_RESTLESS
+    
+    # Reset to asleep
+    clock.advance(0.5)
+    clf.update(Reading(brpm=24.0, bpm=120.0, confidence=0.90, motion_index=0.10))
+    clock.advance(0.5)
+    clf.update(Reading(brpm=24.0, bpm=120.0, confidence=0.90, motion_index=0.10))
+    
+    # Motion 0.85 -> RESTLESS (<= 0.85)
+    clock.advance(0.5)
+    clf.update(Reading(brpm=24.0, bpm=120.0, confidence=0.90, motion_index=0.85))
+    clock.advance(0.5)
+    assert clf.update(Reading(brpm=24.0, bpm=120.0, confidence=0.90, motion_index=0.85)) == STATE_RESTLESS
+    
+    # Motion 0.86 -> AWAKE
+    clock.advance(0.5)
+    clf.update(Reading(brpm=24.0, bpm=120.0, confidence=0.90, motion_index=0.86))
+    clock.advance(0.5)
+    assert clf.update(Reading(brpm=24.0, bpm=120.0, confidence=0.90, motion_index=0.86)) == STATE_AWAKE
+
+def test_boundary_baseline_fallback():
+    clock = FakeClock()
+    clf = SleepStateClassifier(clock=clock.now)
+    
+    # If no reading in 20-30 range, baseline might be fallback or None initially
+    # Provide only readings < 20
+    clf.update(Reading(brpm=18.0, bpm=120.0, confidence=0.90, motion_index=0.10))
+    clock.advance(0.5)
+    assert clf.update(Reading(brpm=18.0, bpm=120.0, confidence=0.90, motion_index=0.10)) == STATE_DROWSY
+
+def test_boundary_hysteresis_ticks():
+    clock = FakeClock()
+    clf = SleepStateClassifier(clock=clock.now)
+    
+    # Need 2 ticks to switch state
+    clf.update(Reading(brpm=24.0, bpm=120.0, confidence=0.90, motion_index=0.10))
+    clock.advance(0.5)
+    clf.update(Reading(brpm=24.0, bpm=120.0, confidence=0.90, motion_index=0.10))
+    assert clf.current_state == STATE_ASLEEP
+    
+    # Tick 1: RESTLESS reading
+    clock.advance(0.5)
+    assert clf.update(Reading(brpm=24.0, bpm=120.0, confidence=0.90, motion_index=0.80)) == STATE_ASLEEP
+    
+    # Tick 2: RESTLESS reading
+    clock.advance(0.5)
+    assert clf.update(Reading(brpm=24.0, bpm=120.0, confidence=0.90, motion_index=0.80)) == STATE_RESTLESS
