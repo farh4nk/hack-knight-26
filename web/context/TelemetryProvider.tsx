@@ -112,9 +112,30 @@ export function TelemetryProvider({ children }: { children: ReactNode }) {
       mockSource.current?.simulateRestless();
       return;
     }
-    const res = await fetch(SIMULATE_RESTLESS_URL, { method: "POST" });
-    if (!res.ok) throw new Error(`simulate-restless failed: HTTP ${res.status}`);
-  }, []);
+    try {
+      const res = await fetch(SIMULATE_RESTLESS_URL, { method: "POST" });
+      if (res.ok) return;
+    } catch {
+      console.warn("Daemon offline; simulating restlessness directly in-browser.");
+    }
+
+    // Graceful fallback: simulate restless episode locally if daemon endpoint fails
+    const nowIso = new Date().toISOString();
+    handleMessage({
+      timestamp: nowIso,
+      state: "RESTLESS",
+      vitals: { brpm: 34.5, bpm: 122.0, confidence: 0.92 },
+      motion_index: 0.76,
+    });
+    setTimeout(() => {
+      handleMessage({
+        timestamp: new Date().toISOString(),
+        state: "ASLEEP",
+        vitals: { brpm: 24.0, bpm: 108.0, confidence: 0.95 },
+        motion_index: 0.06,
+      });
+    }, 15000);
+  }, [handleMessage]);
 
   return (
     <TelemetryContext.Provider
