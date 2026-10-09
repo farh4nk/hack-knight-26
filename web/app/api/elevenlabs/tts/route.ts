@@ -2,6 +2,42 @@ import { NextResponse } from "next/server";
 
 const EL = "https://api.elevenlabs.io";
 
+// Helper to synthesize a gentle calming chime WAV when in mock/testing mode
+function generateLullabyChimeWav(): Buffer {
+  const sampleRate = 22050;
+  const durationSec = 3.5;
+  const numSamples = Math.floor(sampleRate * durationSec);
+  const buffer = Buffer.alloc(44 + numSamples * 2);
+
+  buffer.write("RIFF", 0);
+  buffer.writeUInt32LE(36 + numSamples * 2, 4);
+  buffer.write("WAVE", 8);
+  buffer.write("fmt ", 12);
+  buffer.writeUInt32LE(16, 16);
+  buffer.writeUInt16LE(1, 20); // PCM
+  buffer.writeUInt16LE(1, 22); // mono
+  buffer.writeUInt32LE(sampleRate, 24);
+  buffer.writeUInt32LE(sampleRate * 2, 28);
+  buffer.writeUInt16LE(2, 32);
+  buffer.writeUInt16LE(16, 34);
+  buffer.write("data", 36);
+  buffer.writeUInt32LE(numSamples * 2, 40);
+
+  // Soothing lullaby sequence: C5 (523Hz), G4 (392Hz), E4 (330Hz), C4 (262Hz)
+  const notes = [523.25, 392.0, 329.63, 261.63];
+  for (let i = 0; i < numSamples; i++) {
+    const t = i / sampleRate;
+    const noteIdx = Math.min(Math.floor(t / 0.8), notes.length - 1);
+    const noteT = t % 0.8;
+    const freq = notes[noteIdx];
+    const env = Math.exp(-noteT * 3.2);
+    const val = 0.25 * Math.sin(2 * Math.PI * freq * noteT) * env;
+    const sample = Math.max(-32768, Math.min(32767, Math.floor(val * 32767)));
+    buffer.writeInt16LE(sample, 44 + i * 2);
+  }
+  return buffer;
+}
+
 export async function POST(req: Request) {
   const apiKey = process.env.ELEVENLABS_API_KEY;
 
@@ -17,15 +53,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "voiceId and text are required" }, { status: 400 });
   }
 
-  // Graceful fallback for mock testing without API key
+  // Graceful fallback for demo/testing without API key
   if (!apiKey || apiKey === "your_elevenlabs_api_key_here" || voiceId.startsWith("mock_")) {
-    console.warn("[ElevenLabs API] Generating fallback audio for text:", text);
-    // Return empty / silent mp3 or placeholder audio buffer
-    const silentMp3Header = Buffer.from([
-      0xff, 0xfb, 0x90, 0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    ]);
-    return new Response(silentMp3Header, {
-      headers: { "Content-Type": "audio/mpeg" },
+    console.info("[TTS Mock Fallback] Playing calming lullaby chime for text:", text);
+    const chimeWav = generateLullabyChimeWav();
+    return new Response(chimeWav, {
+      headers: { "Content-Type": "audio/wav" },
     });
   }
 
