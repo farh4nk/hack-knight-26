@@ -1,0 +1,39 @@
+# Runs on the Raspberry Pi: daemon (camera, Presage, telemetry) + web UI.
+# Images are built on a laptop and shipped by build_and_ship.sh; the Pi builds nothing.
+#
+#   cd ~/cradleecho && docker compose up -d
+#   Open http://<pi-host>:3000 from any device on the same network.
+name: cradleecho
+
+services:
+  daemon:
+    image: cradleecho-daemon:latest
+    ports:
+      - "8000:8000"
+    env_file:
+      - daemon.env # PRESAGE_API_KEY etc.
+    devices:
+      # Container path stays /dev/video0 (the image's CRADLEECHO_CAMERA). Run pi_check.sh to
+      # find which host node is the Logitech; a Pi has many /dev/video* nodes.
+      - "${CRADLEECHO_VIDEO_DEVICE:-/dev/video0}:/dev/video0"
+      - /dev/dri:/dev/dri
+    group_add:
+      # Numeric host GIDs: names resolve inside the image, not on the host.
+      - "${VIDEO_GID:-44}"
+      - "${RENDER_GID:-105}"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  web:
+    image: cradleecho-web:latest
+    ports:
+      - "3000:3000"
+    env_file:
+      - web.env # ELEVENLABS_API_KEY (used by the server-side voice routes)
+    depends_on:
+      - daemon
+    restart: unless-stopped

@@ -1,15 +1,38 @@
 // Temporary product name; change it here only.
 export const APP_NAME = "CradleEcho";
 
-export const DAEMON_URL = (
-  process.env.NEXT_PUBLIC_DAEMON_URL ?? "http://localhost:8000"
-).replace(/\/$/, "");
+const DAEMON_PORT = 8000;
 
-export const WS_URL = `${DAEMON_URL.replace(/^http/, "ws")}/ws/telemetry`;
-export const VIDEO_FEED_URL = `${DAEMON_URL}/video_feed`;
-// Same feed with the daemon's face-gate and vitals overlay drawn on it.
-export const VIDEO_FEED_DEBUG_URL = `${DAEMON_URL}/video_feed/debug`;
-export const SIMULATE_RESTLESS_URL = `${DAEMON_URL}/api/simulate-restless`;
+/**
+ * Base URL of the daemon (video, telemetry, API). Browser-only values: call this from effects and
+ * event handlers, or use `useDaemonUrl()` when rendering.
+ *
+ * Unset NEXT_PUBLIC_DAEMON_URL means "the host that served this page, on port 8000". That is what
+ * makes the UI work from any device when the Pi serves both the UI and the daemon (a hard-coded
+ * localhost would point a laptop at itself).
+ */
+export function daemonUrl(): string {
+  const fromEnv = process.env.NEXT_PUBLIC_DAEMON_URL;
+  if (fromEnv) return fromEnv.replace(/\/$/, "");
+  if (typeof window !== "undefined") {
+    return `${window.location.protocol}//${window.location.hostname}:${DAEMON_PORT}`;
+  }
+  return `http://localhost:${DAEMON_PORT}`;
+}
+
+/** Analytics API (nightly summary, soothe-event log). Same host-relative rule as the daemon, port 8001. */
+export function analyticsUrl(): string {
+  const fromEnv = process.env.NEXT_PUBLIC_ANALYTICS_URL;
+  if (fromEnv) return fromEnv.replace(/\/$/, "");
+  if (typeof window !== "undefined") return `${window.location.protocol}//${window.location.hostname}:8001`;
+  return "http://localhost:8001";
+}
+
+export const wsUrl = () => `${daemonUrl().replace(/^http/, "ws")}/ws/telemetry`;
+export const videoFeedUrl = (debug = false) =>
+  // The debug feed has the daemon's face-gate and vitals overlay drawn on it.
+  `${daemonUrl()}${debug ? "/video_feed/debug" : "/video_feed"}`;
+export const simulateRestlessUrl = () => `${daemonUrl()}/api/simulate-restless`;
 
 // Generate telemetry in the browser instead of connecting to the daemon.
 export const MOCK = process.env.NEXT_PUBLIC_MOCK === "1";

@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Self-contained server bundle for the Pi image (see web/Dockerfile).
+  output: "standalone",
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {

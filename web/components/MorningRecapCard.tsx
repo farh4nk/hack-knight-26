@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { analyticsUrl } from "@/lib/config";
 
-const ANALYTICS_URL = process.env.NEXT_PUBLIC_ANALYTICS_URL || "http://localhost:8001";
 
 interface NightlySummaryResponse {
   baby_name: string;
@@ -26,7 +26,7 @@ export function MorningRecapCard() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${ANALYTICS_URL}/api/nightly-summary?baby_name=Maya`);
+      const res = await fetch(`${analyticsUrl()}/api/nightly-summary?baby_name=Maya`);
       if (!res.ok) throw new Error("Could not load summary");
       const json = await res.json();
       setData(json);

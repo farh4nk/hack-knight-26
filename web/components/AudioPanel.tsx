@@ -6,8 +6,8 @@ import { useVoiceProfile } from "@/hooks/useVoiceProfile";
 import { useAutoSoothe } from "@/hooks/useAutoSoothe";
 import { VoiceRecorder } from "./VoiceRecorder";
 import { SootheControls } from "./SootheControls";
+import { analyticsUrl } from "@/lib/config";
 
-const ANALYTICS_URL = process.env.NEXT_PUBLIC_ANALYTICS_URL || "http://localhost:8001";
 
 export function AudioPanel() {
   const { latest } = useTelemetry();
@@ -23,7 +23,7 @@ export function AudioPanel() {
         setNotification(`Auto-soothe triggered: soothing Maya in your voice.`);
         // Log intervention to Tiger Data via Dev 4 backend
         try {
-          await fetch(`${ANALYTICS_URL}/api/soothe-events`, {
+          await fetch(`${analyticsUrl()}/api/soothe-events`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({

@@ -12,9 +12,9 @@ import {
 import {
   HISTORY_LENGTH,
   MOCK,
-  SIMULATE_RESTLESS_URL,
   STALE_AFTER_MS,
-  WS_URL,
+  simulateRestlessUrl,
+  wsUrl,
 } from "@/lib/config";
 import { startMockTelemetry, type MockTelemetrySource } from "@/lib/mockTelemetry";
 import { isTelemetry, type Telemetry } from "@/lib/types";
@@ -69,7 +69,7 @@ export function TelemetryProvider({ children }: { children: ReactNode }) {
     let disposed = false;
 
     const connect = () => {
-      ws = new WebSocket(WS_URL);
+      ws = new WebSocket(wsUrl());
       ws.onopen = () => {
         retryMs = MIN_RETRY_MS;
         setConnected(true);
@@ -113,7 +113,7 @@ export function TelemetryProvider({ children }: { children: ReactNode }) {
       return;
     }
     try {
-      const res = await fetch(SIMULATE_RESTLESS_URL, { method: "POST" });
+      const res = await fetch(simulateRestlessUrl(), { method: "POST" });
       if (res.ok) return;
     } catch {
       console.warn("Daemon offline; simulating restlessness directly in-browser.");

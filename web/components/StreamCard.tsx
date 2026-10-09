@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useTelemetry } from "@/context/TelemetryProvider";
 import { FRAMING_LABELS } from "@/lib/cameraHint";
-import { VIDEO_FEED_DEBUG_URL, VIDEO_FEED_URL } from "@/lib/config";
+import { useDaemonUrl } from "@/lib/useDaemonUrl";
 import { StateBadge } from "./StateBadge";
 
 const RETRY_MS = 3000;
@@ -12,7 +12,8 @@ export function StreamCard() {
   const [offline, setOffline] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [debug, setDebug] = useState(false);
-  const feedUrl = debug ? VIDEO_FEED_DEBUG_URL : VIDEO_FEED_URL;
+  const daemon = useDaemonUrl();
+  const feedUrl = daemon ? `${daemon}${debug ? "/video_feed/debug" : "/video_feed"}` : null;
 
   // While offline, re-request the MJPEG stream every few seconds.
   useEffect(() => {
@@ -27,7 +28,7 @@ export function StreamCard() {
   return (
     <section className="flex flex-col gap-3">
       <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-slate-900 ring-1 ring-white/10">
-        {!offline && (
+        {!offline && feedUrl && (
           // MJPEG stream: plain <img>, next/image can't handle multipart streams.
           // eslint-disable-next-line @next/next/no-img-element
           <img
