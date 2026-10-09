@@ -67,6 +67,8 @@ RENDER_GID=$(getent group render | cut -d: -f3)
 [[ -n "$RENDER_GID" ]] && ok "render group gid $RENDER_GID" || warn "no 'render' group found (the default 105 will be used)"
 if [[ -f daemon.env ]] && grep -q '^PRESAGE_API_KEY=.\+' daemon.env; then ok "PRESAGE_API_KEY set in daemon.env"
 else warn "PRESAGE_API_KEY missing in daemon.env: the daemon will fall back to MOCK vitals"; fi
+if [[ -f web.env ]] && grep -q '^ELEVENLABS_API_KEY=.\+' web.env; then ok "ELEVENLABS_API_KEY set in web.env"
+else warn "ELEVENLABS_API_KEY missing in web.env: voice cloning and talk-to-baby will not work"; fi
 docker image inspect cradleecho-daemon:latest >/dev/null 2>&1 && ok "daemon image loaded" || bad "daemon image not loaded (run build_and_ship.sh from your laptop)"
 docker image inspect cradleecho-web:latest >/dev/null 2>&1 && ok "web image loaded" || bad "web image not loaded (run build_and_ship.sh from your laptop)"
 

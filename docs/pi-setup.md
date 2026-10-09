@@ -13,7 +13,7 @@ Logitech webcam ──USB──▶ Pi 4: [daemon :8000]  [web UI :3000]
 - Raspberry Pi 4, **64-bit** Raspberry Pi OS (Lite is fine), 4 GB RAM recommended (2 GB is tight).
 - Docker + the compose plugin: `curl -fsSL https://get.docker.com | sh`, then `sudo usermod -aG docker $USER` and log back in.
 - `sudo apt install v4l-utils` (lets `pi_check.sh` find the camera).
-- SSH access from your laptop (`ssh-copy-id pi@<pi-host>`), and a `PRESAGE_API_KEY` in `daemon/.env`.
+- SSH access from your laptop (`ssh-copy-id pi@<pi-host>`), a `PRESAGE_API_KEY` in `daemon/.env`, and an `ELEVENLABS_API_KEY` in `web/.env.local` (for voice cloning).
 
 ## Deploy (laptop → Pi)
 The Pi builds nothing. Compiling the Presage bridge or `next build` on a Pi 4 is slow and can run out of memory.
@@ -23,7 +23,7 @@ The Pi builds nothing. Compiling the Presage bridge or `next build` on a Pi 4 is
 deploy/pi/build_and_ship.sh pi@raspberrypi.local --with-env
 ```
 This builds both images for `linux/arm64`, loads them on the Pi, and copies `compose.yaml`, `pi_check.sh`
-and (with `--with-env`) your `daemon/.env`. The daemon image is ~2.2 GB, so the first transfer takes a few minutes.
+and (with `--with-env`) your Presage key (`daemon.env`) and ElevenLabs key (`web.env`). The daemon image is ~2.2 GB, so the first transfer takes a few minutes.
 On an Apple Silicon Mac the arm64 build is native. On an x86 machine run once:
 `docker run --privileged --rm tonistiigi/binfmt --install arm64`.
 
