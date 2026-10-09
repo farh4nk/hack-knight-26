@@ -1,0 +1,140 @@
+"""API and integration tests for CradleEcho edge daemon."""
+
+import asyncio
+from datetime import datetime
+import json
+import os
+import sys
+import pytest
+from fastapi.testclient import TestClient
+
+from cradleecho.camera import Camera
+from cradleecho.classifier import SleepStateClassifier, VALID_STATES
+from cradleecho.main import create_app
+from cradleecho.sources.mock import MockVitalsSource
+from cradleecho.sources.presage import PresageVitalsSource
+from cradleecho.telemetry import TelemetryHub
+
+
+@pytest.fixture
+def test_app():
+    """Create test FastAPI application with synthetic camera feed."""
+    camera = Camera(device="none")
+    source = MockVitalsSource(seed=42)
+    classifier = SleepStateClassifier()
+    app = create_app(camera=camera, source=source, classifier=classifier)
+    return app
+
+
+def test_healthz(test_app):
+    with TestClient(test_app) as client:
+        response = client.get("/healthz")
+        assert response.status_code == 200
+        assert response.json() == {"status": "ok"}
+
+
+def test_api_state_schema(test_app):
+    with TestClient(test_app) as client:
+        response = client.get("/api/state")
+        assert response.status_code == 200
+        data = response.json()
+
+        # Validate AGENTS.md contract
+        assert "timestamp" in data
+        assert data["timestamp"].endswith("Z")
+        # Validate timestamp parseable
+        datetime.fromisoformat(data["timestamp"].replace("Z", "+00:00"))
+
+        assert "state" in data
+        assert data["state"] in VALID_STATES
+
+        assert "vitals" in data
+        vitals = data["vitals"]
+        assert "brpm" in vitals and isinstance(vitals["brpm"], (int, float))
+        assert "bpm" in vitals and isinstance(vitals["bpm"], (int, float))
+        assert "confidence" in vitals and isinstance(vitals["confidence"], (int, float))
+
+        assert "motion_index" in data
+        assert isinstance(data["motion_index"], (int, float))
+
+
+def test_simulate_restless(test_app):
+    with TestClient(test_app) as client:
+        # Trigger simulate-restless
+        response = client.post("/api/simulate-restless", json={"seconds": 15.0})
+        assert response.status_code == 200
+        body = response.json()
+        assert "forced_until" in body
+        assert body["forced_until"].endswith("Z")
+
+        # Telemetry state should immediately reflect RESTLESS
+        state_resp = client.get("/api/state")
+        assert state_resp.status_code == 200
+        assert state_resp.json()["state"] == "RESTLESS"
+
+
+def test_video_feed_mjpeg(test_app):
+    with TestClient(test_app) as client:
+        response = client.get("/video_feed?limit=1")
+        assert response.status_code == 200
+        content_type = response.headers.get("content-type", "")
+        assert "multipart/x-mixed-replace" in content_type
+        assert "boundary=frame" in content_type
+
+        assert b"--frame" in response.content
+        assert b"Content-Type: image/jpeg" in response.content
+        assert b"\xff\xd8" in response.content
+
+
+def test_websocket_telemetry(test_app):
+    with TestClient(test_app) as client:
+        with client.websocket_connect("/ws/telemetry") as ws:
+            # Immediately upon connection, hub sends initial state
+            msg = ws.receive_text()
+            payload = json.loads(msg)
+
+            assert "timestamp" in payload
+            assert payload["timestamp"].endswith("Z")
+            assert payload["state"] in VALID_STATES
+            assert "vitals" in payload
+            assert "brpm" in payload["vitals"]
+            assert "bpm" in payload["vitals"]
+            assert "confidence" in payload["vitals"]
+            assert "motion_index" in payload
+
+
+@pytest.mark.asyncio
+async def test_presage_source_and_fake_bridge():
+    """Verify Presage subprocess adapter reading NDJSON from fake_bridge."""
+    fake_bridge_path = os.path.join(
+        os.path.dirname(__file__), "..", "presage_bridge", "fake_bridge.py"
+    )
+    cmd = [sys.executable, fake_bridge_path]
+
+    source = PresageVitalsSource(cmd=cmd, stale_timeout_s=1.5)
+    await source.start()
+
+    try:
+        # Wait up to 2 seconds for first NDJSON line to be read
+        reading = None
+        for _ in range(20):
+            await asyncio.sleep(0.1)
+            r = source.read()
+            if r.confidence > 0.0:
+                reading = r
+                break
+
+        assert reading is not None, "Failed to read non-zero reading from fake bridge"
+        assert 20.0 <= reading.brpm <= 30.0
+        assert 110.0 <= reading.bpm <= 130.0
+        assert reading.confidence >= 0.80
+
+        # Test stale awareness: if timeout elapses without messages, confidence drops to 0.0
+        # Stop source to stop receiving messages
+        await source.stop()
+        # Wait until stale timeout passes
+        await asyncio.sleep(1.6)
+        stale_reading = source.read()
+        assert stale_reading.confidence == 0.0
+    finally:
+        await source.stop()
