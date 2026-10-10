@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useTelemetry } from "@/context/TelemetryProvider";
 import type { CameraStatus, NightVisionMode } from "@/lib/types";
 import { useDaemonUrl } from "@/lib/useDaemonUrl";
-import { nightVisionUrl } from "@/lib/config";
+import { hasSeparateEdge, nightVisionUrl } from "@/lib/config";
 import { StateBadge } from "./StateBadge";
 
 const RETRY_MS = 3000;
@@ -61,15 +61,30 @@ export function CameraWindow() {
     return () => clearTimeout(timer);
   }, [offline]);
 
-  const currentMode = camera?.night_vision ?? "OFF";
+  // With a separate edge unit the daemon only sees the edge's stream, so its telemetry can't say
+  // what the edge's night vision is doing: read the mode from the edge itself.
+  const [edgeMode, setEdgeMode] = useState<NightVisionMode | null>(null);
+  useEffect(() => {
+    if (!daemon || !hasSeparateEdge()) return;
+    const load = () =>
+      fetch(nightVisionUrl())
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => j && setEdgeMode(j.mode))
+        .catch(() => {});
+    load();
+    const timer = setInterval(load, 5000);
+    return () => clearInterval(timer);
+  }, [daemon]);
+  const currentMode = (hasSeparateEdge() ? edgeMode : camera?.night_vision) ?? "OFF";
   const setNightVision = async (mode: NightVisionMode) => {
     if (!daemon) return;
     try {
-      await fetch(nightVisionUrl(), {
+      const res = await fetch(nightVisionUrl(), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode }),
       });
+      if (res.ok && hasSeparateEdge()) setEdgeMode((await res.json()).mode);
     } catch {
       // Non-blocking; daemon will push updated state via telemetry
     }
