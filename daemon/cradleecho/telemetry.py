@@ -50,6 +50,9 @@ def format_telemetry_payload(
     session_running = getattr(source, "session_running", False) if source else False
     sdk_code = getattr(source, "validation_code", None) if session_running else None
     sdk_hint = getattr(source, "raw_validation_hint", None) if session_running else None
+    if sdk_code == "kOk":
+        # "Hold still and record." is Presage's all-clear, not a problem to show the parent.
+        sdk_code = sdk_hint = None
 
     camera_info = {
         "enabled": getattr(camera, "is_enabled", lambda: True)() if camera else True,
