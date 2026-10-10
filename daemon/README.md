@@ -85,6 +85,8 @@ The daemon is configured via environment variables or a `.env` file (parsed usin
 | `CRADLEECHO_MIN_BRIGHTNESS` | `35` | Minimum mean brightness threshold for the lighting gate. |
 | `CRADLEECHO_CAMERA_ENABLED` | `True` | Whether the camera starts on. Switch at runtime with `POST /api/camera {"enabled": false}`: off releases the device and ends the Presage session, so no Presage credits are used. Presage is also paused whenever the simulated source is selected (`POST /api/source {"source": "mock"}`), so credits are only spent with the camera on and the real sensor selected. |
 | `CRADLEECHO_CAMERA_FPS` | `30` | Frame rate requested from the camera (Presage needs >= 25). |
+| `CRADLEECHO_STREAM_FPS` | `20` | Rate of the MJPEG preview while someone watches (about 1/s with no viewer). Presage always gets every camera frame. Set `30` on a camera-only Pi that another machine reads. |
+| `CRADLEECHO_DIAG` | `0` | `1` logs `DIAG ...` lines every 5 s: camera/gate/encode rates, frames into the Presage bridge, drops by reason, vitals rows and the latest SDK validation code. |
 | `CRADLEECHO_ASLEEP_BRPM_MIN` / `_MAX` | `22` / `40` | Breathing range (per minute) that counts as sleep. Outside it the state is AWAKE. |
 | `CRADLEECHO_CALM_MOTION` | `0.10` | Motion below this is calm (can read ASLEEP). |
 | `CRADLEECHO_RESTLESS_MOTION` | `0.20` | Motion at/above this, with in-range breathing, is RESTLESS. |

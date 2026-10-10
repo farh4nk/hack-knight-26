@@ -6,15 +6,67 @@ import logging
 import os
 import shlex
 import re
+import threading
 import time
 
 import cv2
 import numpy as np
 
+from cradleecho import diag
 from cradleecho.config import settings
 from cradleecho.sources.base import Reading
 
 logger = logging.getLogger(__name__)
+
+
+class _FrameWriter:
+    """Feeds frames to the bridge's stdin pipe from its own thread; the newest frame wins.
+
+    Going through the asyncio event loop cost ~4 of 30 frames/s on a busy Pi (the loop is also
+    serving the preview stream and the websocket), and Presage needs >= 25 fps. The pipe is a
+    plain blocking fd, so a slow bridge naturally slows this thread and stale frames are replaced.
+    """
+
+    def __init__(self, fd: int) -> None:
+        self._fd = fd
+        self._cond = threading.Condition()
+        self._data: bytes | None = None
+        self._closed = False
+        self._thread = threading.Thread(target=self._run, name="PresageFrameWriter", daemon=True)
+        self._thread.start()
+
+    def submit(self, data: bytes) -> None:
+        with self._cond:
+            if self._data is not None:
+                diag.count("frames_replaced")
+            self._data = data
+            self._cond.notify()
+
+    def close(self) -> None:
+        with self._cond:
+            self._closed = True
+            self._cond.notify()
+        self._thread.join(timeout=1.0)
+        if not self._thread.is_alive():
+            try:
+                os.close(self._fd)
+            except OSError:
+                pass
+
+    def _run(self) -> None:
+        while True:
+            with self._cond:
+                self._cond.wait_for(lambda: self._data is not None or self._closed)
+                if self._closed:
+                    return
+                data, self._data = self._data, None
+            view = memoryview(data)
+            try:
+                while view:
+                    view = view[os.write(self._fd, view):]
+            except OSError:  # bridge exited
+                return
+            diag.count("frames_to_bridge")
 
 
 class PresageVitalsSource:
@@ -74,7 +126,7 @@ class PresageVitalsSource:
                 self._frame_size = (int(m.group(1)), int(m.group(2)))
         self._min_frame_interval = 1.0 / (max_fps or settings.presage_fps)
         self._last_push = 0.0
-        self._write_pending = False
+        self._writer: _FrameWriter | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._latest_reading: Reading | None = None
         self._last_received_time: float | None = None
@@ -112,6 +164,7 @@ class PresageVitalsSource:
                 except ProcessLookupError:
                     pass
             self._proc = None
+        self._close_writer()
         self._validation = None
 
         if self._worker_task is not None:
@@ -127,6 +180,11 @@ class PresageVitalsSource:
         self._gate_active = False
         if self._gate_event:
             self._gate_event.clear()
+
+    def _close_writer(self) -> None:
+        writer, self._writer = self._writer, None
+        if writer is not None:
+            writer.close()
 
     @property
     def paused(self) -> bool:
@@ -181,7 +239,9 @@ class PresageVitalsSource:
 
         if self._gate is not None:
             was_active = self._gate_active
+            t0 = time.perf_counter()
             is_active = self._gate.update(frame)
+            diag.timed("gate", time.perf_counter() - t0)
             self._gate_active = is_active
             if is_active and not was_active:
                 if self._gate_event:
@@ -192,32 +252,17 @@ class PresageVitalsSource:
         if not self._gate_active:
             return
 
+        writer = self._writer
+        if writer is None:
+            return
         now = time.monotonic()
-        if self._write_pending or now - self._last_push < self._min_frame_interval:
+        if now - self._last_push < self._min_frame_interval:
             return
         self._last_push = now
         w, h = self._frame_size
         if frame.shape[1] != w or frame.shape[0] != h:
             frame = cv2.resize(frame, (w, h), interpolation=cv2.INTER_AREA)
-        self._write_pending = True
-        try:
-            self._loop.call_soon_threadsafe(self._write_frame, np.ascontiguousarray(frame).tobytes())
-        except RuntimeError:  # loop closed during shutdown
-            self._write_pending = False
-
-    def _write_frame(self, data: bytes) -> None:
-        try:
-            proc = self._proc
-            if proc is None or proc.stdin is None or proc.stdin.is_closing():
-                return
-            # Bridge is not keeping up: drop rather than queue stale frames.
-            if proc.stdin.transport.get_write_buffer_size() > len(data):
-                return
-            proc.stdin.write(data)
-        except (BrokenPipeError, ConnectionResetError, RuntimeError):
-            pass
-        finally:
-            self._write_pending = False
+        writer.submit(np.ascontiguousarray(frame).tobytes())
 
     def set_forced_mode(self, mode: str | None) -> None:
         self._mode = mode
@@ -262,13 +307,26 @@ class PresageVitalsSource:
 
                 logger.info("Spawning Presage bridge: %s", " ".join(self._cmd_args))
                 self._validation = None
-                self._proc = await asyncio.create_subprocess_exec(
-                    *self._cmd_args,
-                    stdin=asyncio.subprocess.PIPE if self._frame_size else asyncio.subprocess.DEVNULL,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=None,  # Logs pass directly to parent stderr
-                    env=env,
-                )
+                read_fd = write_fd = None
+                if self._frame_size:
+                    read_fd, write_fd = os.pipe()  # we write frames ourselves (see _FrameWriter)
+                try:
+                    self._proc = await asyncio.create_subprocess_exec(
+                        *self._cmd_args,
+                        stdin=read_fd if read_fd is not None else asyncio.subprocess.DEVNULL,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=None,  # Logs pass directly to parent stderr
+                        env=env,
+                    )
+                except Exception:
+                    if write_fd is not None:
+                        os.close(write_fd)
+                    raise
+                finally:
+                    if read_fd is not None:
+                        os.close(read_fd)
+                if write_fd is not None:
+                    self._writer = _FrameWriter(write_fd)
 
                 while self._running and self._proc.stdout is not None:
                     line = await self._proc.stdout.readline()
@@ -279,6 +337,7 @@ class PresageVitalsSource:
                         data = json.loads(line.decode("utf-8").strip())
                         if "validation" in data:
                             self._validation = (data.get("validation", ""), data.get("hint", ""))
+                            diag.value("validation", str(data.get("validation", "")))
                             continue
 
                         brpm = float(data.get("brpm", 0.0))
@@ -287,6 +346,11 @@ class PresageVitalsSource:
                         motion_val = data.get("motion_index")
                         motion = float(motion_val) if motion_val is not None else None
                         timestamp = float(data.get("t", time.time()))
+
+                        diag.count("bridge_rows")
+                        diag.value("last_row", f"brpm={brpm:.1f} bpm={bpm:.1f} conf={conf:.2f}")
+                        if bpm > 0.0:
+                            diag.count("rows_with_bpm")
 
                         if brpm == 0.0 and bpm == 0.0:
                             conf = 0.0
@@ -317,6 +381,7 @@ class PresageVitalsSource:
                 logger.error("Presage subprocess error: %s", e)
 
             self._proc = None
+            self._close_writer()
             self._validation = None
 
             if self._running:
