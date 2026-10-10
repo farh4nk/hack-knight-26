@@ -334,7 +334,10 @@ export function TwoWayAudio({ sootheEngine }: { sootheEngine: SootheEngine | nul
         <div className="flex flex-col gap-3">
           {!secureContext ? (
             <div className="rounded-xl bg-amber-500/10 px-4 py-3 text-sm text-amber-300 ring-1 ring-amber-500/30">
-              Microphone needs HTTPS or localhost
+              <div>Microphone needs HTTPS or localhost</div>
+              <a href={`http://${typeof window !== "undefined" ? window.location.hostname : "localhost"}/pair`} target="_blank" rel="noopener noreferrer" className="mt-2 inline-block text-xs underline hover:text-amber-100">
+                Pair this device to enable the microphone
+              </a>
             </div>
           ) : (
             <button

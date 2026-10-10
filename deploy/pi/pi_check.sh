@@ -4,7 +4,7 @@
 # (with --write) saves what compose needs into .env.
 #
 #   ./pi_check.sh            report only
-#   ./pi_check.sh --write    also write .env (CRADLEECHO_VIDEO_DEVICE, VIDEO_GID, RENDER_GID)
+#   ./pi_check.sh --write    also write .env (CRADLEECHO_VIDEO_DEVICE, VIDEO_GID, RENDER_GID, SITE_HOST)
 set -uo pipefail
 
 WRITE=0
@@ -29,7 +29,7 @@ echo "Docker"
 if command -v docker >/dev/null 2>&1; then
   ok "$(docker --version)"
   docker info >/dev/null 2>&1 && ok "can talk to the Docker daemon" \
-    || bad "can't reach Docker: is it running, and is $USER in the docker group? (sudo usermod -aG docker \$USER, then log out/in)"
+    || bad "can't reach Docker: is it running, and is \$USER in the docker group? (sudo usermod -aG docker \$USER, then log out/in)"
   docker compose version >/dev/null 2>&1 && ok "docker compose plugin present" || bad "docker compose plugin missing"
 else
   bad "Docker not installed (curl -fsSL https://get.docker.com | sh)"
@@ -77,20 +77,45 @@ docker image inspect cradleecho-daemon:latest >/dev/null 2>&1 && ok "daemon imag
 docker image inspect cradleecho-analytics:latest >/dev/null 2>&1 && ok "analytics image loaded" || bad "analytics image not loaded (run build_and_ship.sh from your laptop)"
 docker image inspect cradleecho-web:latest >/dev/null 2>&1 && ok "web image loaded" || bad "web image not loaded (run build_and_ship.sh from your laptop)"
 
+# Check if ports 80/443 are already in use (warn, don't fail)
+if command -v ss >/dev/null 2>&1; then
+  ss -ltn 2>/dev/null | grep -q ':80 ' && warn "port 80 already in use (Caddy needs it for HTTP -> HTTPS redirect and CA cert download)"
+  ss -ltn 2>/dev/null | grep -q ':443 ' && warn "port 443 already in use (Caddy needs it for HTTPS)"
+elif command -v netstat >/dev/null 2>&1; then
+  netstat -ltn 2>/dev/null | grep -q ':80 ' && warn "port 80 already in use (Caddy needs it for HTTP -> HTTPS redirect and CA cert download)"
+  netstat -ltn 2>/dev/null | grep -q ':443 ' && warn "port 443 already in use (Caddy needs it for HTTPS)"
+fi
+
 if [[ $WRITE -eq 1 ]]; then
+  HOSTNAME_CLEAN=$(hostname | sed "s/\.local$//")
   {
     [[ -n "$VIDEO_DEV" ]] && echo "CRADLEECHO_VIDEO_DEVICE=$VIDEO_DEV"
     [[ -n "$VIDEO_GID" ]] && echo "VIDEO_GID=$VIDEO_GID"
     [[ -n "$RENDER_GID" ]] && echo "RENDER_GID=$RENDER_GID"
     [[ -n "$AUDIO_GID" ]] && echo "AUDIO_GID=$AUDIO_GID"
+    echo "SITE_HOST=${HOSTNAME_CLEAN}.local"
   } > .env
   echo "Wrote .env:"; sed 's/^/        /' .env
 fi
 
 echo
 echo "Open from another device on this network:"
-echo "  http://$(hostname | sed "s/\.local$//").local:3000"
-for ip in $(hostname -I 2>/dev/null); do echo "  http://$ip:3000"; done
+echo "  https://$(hostname | sed "s/\.local$//").local/   (HTTPS via Caddy — pair first at http://<host>/pair)"
+echo "  http://$(hostname | sed "s/\.local$//").local/pair   (pairing page: download CA cert & install)"
+for ip in $(hostname -I 2>/dev/null); do
+  echo "  https://$ip/   (HTTPS via Caddy)"
+  echo "  http://$ip/pair   (pairing page)"
+done
+echo
+echo "Plain-HTTP debug ports (still available):"
+echo "  http://$(hostname | sed "s/\.local$//").local:3000   (web UI)"
+echo "  http://$(hostname | sed "s/\.local$//").local:8000   (daemon API / video feed)"
+echo "  http://$(hostname | sed "s/\.local$//").local:8001   (analytics API)"
+for ip in $(hostname -I 2>/dev/null); do
+  echo "  http://$ip:3000   (web UI)"
+  echo "  http://$ip:8000   (daemon API / video feed)"
+  echo "  http://$ip:8001   (analytics API)"
+done
 echo
 echo "$FAILS failed, $WARNS warnings"
 [[ $FAILS -eq 0 ]]

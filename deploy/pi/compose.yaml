@@ -1,11 +1,31 @@
-# Runs on the Raspberry Pi: daemon (camera, Presage, telemetry, audio) + analytics (Tiger Data, Gemini) + web UI.
+# Runs on the Raspberry Pi: daemon (camera, Presage, telemetry, audio) + analytics (Tiger Data, Gemini) + web UI + Caddy (HTTPS, local CA).
 # Images are built on a laptop and shipped by build_and_ship.sh; the Pi builds nothing.
 #
 #   cd ~/cradleecho && docker compose up -d
-#   Open http://<pi-host>:3000 from any device on the same network.
+#   Open https://<pi-host>.local/ from any device on the same network (after pairing at http://<pi-host>.local/pair).
+#   Plain HTTP on :3000, :8000, :8001 still works for debugging and existing docs.
 name: cradleecho
 
 services:
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./pair:/srv/pair:ro
+    environment:
+      - SITE_HOST=${SITE_HOST:-raspberrypi.local}
+      - SITE_EXTRA=${SITE_EXTRA:-}
+    depends_on:
+      - web
+      - daemon
+      - analytics
+    restart: unless-stopped
+
   daemon:
     image: cradleecho-daemon:latest
     ports:
@@ -58,3 +78,7 @@ services:
       - daemon
       - analytics
     restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

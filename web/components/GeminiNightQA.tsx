@@ -37,7 +37,7 @@ export function GeminiNightQA() {
       setAnswer(data.answer);
       setModelUsed(data.model_used);
     } catch {
-      setError("Gemini assistant unavailable. Make sure analytics is running on :8001.");
+      setError("Gemini assistant unavailable. Check analytics service.");
     } finally {
       setLoading(false);
     }
