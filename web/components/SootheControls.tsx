@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { SootheEngine, SootheSnapshot } from "@/lib/audio/soothe-engine";
 import { synthesize } from "@/lib/audio/elevenlabs";
+import { edgeSoothePlayUrl } from "@/lib/config";
 
 interface SootheControlsProps {
   engine: SootheEngine;
@@ -41,6 +42,13 @@ export function SootheControls({ engine, snapshot, voiceId, onChangeVoice }: Soo
     try {
       const url = await synthesize(voiceId, customText.trim());
       await engine.playOnce(url);
+      try {
+        fetch(edgeSoothePlayUrl(), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phrase: customText.trim() }),
+        }).catch(() => {});
+      } catch {}
       setCustomText("");
     } catch (e) {
       console.error("Talk to baby error:", e);

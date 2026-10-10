@@ -1,5 +1,6 @@
 import { createHeartbeatWavUrl } from "./ambient";
 import { SoothingSnippet } from "./elevenlabs";
+import { edgeSoothePlayUrl, edgeSootheStopUrl } from "@/lib/config";
 
 const FADE_TICK_MS = 100;
 
@@ -131,6 +132,11 @@ export class SootheEngine {
     this.halt();
     if (lockout) this.cooldownUntil = Date.now() + this.opts.cooldownMs;
     if (wasActive) this.opts.onEvent({ type: "stopped", at: Date.now() });
+    try {
+      if (typeof window !== "undefined") {
+        fetch(edgeSootheStopUrl(), { method: "POST" }).catch(() => {});
+      }
+    } catch {}
     this.setStatus("idle");
   }
 
@@ -196,6 +202,15 @@ export class SootheEngine {
     this.snippet = s.text;
     this.voice.src = s.url;
     this.voice.play().catch(() => {});
+    try {
+      if (typeof window !== "undefined") {
+        fetch(edgeSoothePlayUrl(), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phrase: s.text }),
+        }).catch(() => {});
+      }
+    } catch {}
     this.emit();
   }
 
