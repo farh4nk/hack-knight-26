@@ -122,6 +122,35 @@ The task checkboxes below are the original plan and are not maintained. Current 
 - Never run end to end on real hardware: database ingestion, the Gemini recap against live data, auto-soothe with a real voice clone on the Pi speaker.
 - Open PRs: #20 (Presage reliability), #18 (two-way audio, night vision, PWA; conflicts), #19 (LAN HTTPS, stacked on #18).
 
+### Realistic scope for the deadline (Sunday 12 PM)
+
+Aim for: a nursery camera on the Pi plus a laptop that shows the live feed, sleep state, auto-soothe and the morning recap, with the laptop computing the vitals. Do not aim for "everything runs on one Pi" (a Pi 4 is measurably too slow; a Pi 5 is untested).
+
+- **Tier 1, core demo (high confidence):** live camera stream to the web UI over Tailscale; sleep state from vitals; sleep badge flips on "Trigger Test Restlessness", cloned voice plays and the soundscape fades in; state settles, audio fades out, parent is notified; dashboard timeline; Gemini morning recap. Presage vitals for the live parts, with simulated vitals as the fallback.
+- **Tier 2, real vitals that stay smooth (about 60%):** Presage on a Mac reading the Pi's stream (29 fps measured) with framing good enough that Presage stops asking for the chest or "hold still", and breathing and heart rate holding for several minutes. Depends on light, distance and sitting still.
+- **Tier 3, stretch (low):** two-way audio, night vision, PWA (PR #18, untested on hardware, conflicts with `main`); LAN HTTPS (PR #19, overlaps with Tailscale); a single-Pi product.
+
+Schedule (Saturday = Oct 10):
+
+| When | What | Who |
+|---|---|---|
+| Sat early | Merge #20. Run Mac Presage 10 min with the camera pulled back; confirm BPM and breathing hold. | Dev 2 |
+| Sat morning | Tiger Data connection string, run the ingestion worker, confirm rows appear; run the Gemini recap on real data. | Dev 4 |
+| Sat midday | Auto-soothe with the real voice clone and the Pi speaker; UI hookup for the Mac setup. | Dev 2, Dev 3 |
+| Sat afternoon | Decide on PR #18 (rebase and hardware-test, or park it) and #19. | Team |
+| Sat evening | One full run (camera, vitals, database, recap, soothe); rehearse the 2-minute demo twice. | Everyone |
+| Sun morning | No new features. Fix only what rehearsal breaks. Prepare the "why a Pi?" answer. | Everyone |
+
+Rules:
+1. Tier 1 first; no Tier 3 work until a full run works.
+2. Cutoff for real vitals: Saturday 8 PM. If they are not stable by then, demo with simulated vitals plus a short live moment of the real camera.
+3. Anything not working on the Pi by Sunday morning stays out of the demo.
+4. Do not overclaim: say what was measured and what was not tested.
+
+### Why a Pi? (expected judge question)
+
+The Pi is the nursery unit: always-on camera, speaker for the cloned-voice and lullabies, low power, face-gated privacy, no video recorded. Presage's vitals need more compute than a Pi 4 has (measured: 20-25 of the 25 fps the SDK requires; 29 fps when Presage runs on a Mac), so vitals run on a home hub. A Pi 5 should fit it in one box (untested). Do not claim everything runs on the Pi or that a Pi 5 definitely works.
+
 ## Team responsibilities
 
 ### Dev 1: Computer vision & edge daemon (Python / FastAPI)
