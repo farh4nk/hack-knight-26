@@ -4,16 +4,18 @@ The Pi runs everything: camera capture, Presage, sleep-state logic, and the web 
 only a browser: open `http://<pi-host>:3000` to watch the feed and see notifications.
 
 ```
-Logitech webcam ──USB──▶ Pi 4: [daemon :8000]  [web UI :3000]
-                                     ▲               ▲
-                                     └── laptop browser (same network)
+Logitech webcam ──USB──▶ Pi 4: [daemon :8000] ──speaker──▶ Crib audio
+                               [analytics :8001]
+                               [web UI :3000]
+                                     ▲
+                                     └── laptop/phone browser (same network)
 ```
 
 ## Requirements
 - Raspberry Pi 4, **64-bit** Raspberry Pi OS (Lite is fine), 4 GB RAM recommended (2 GB is tight).
 - Docker + the compose plugin: `curl -fsSL https://get.docker.com | sh`, then `sudo usermod -aG docker $USER` and log back in.
 - `sudo apt install v4l-utils` (lets `pi_check.sh` find the camera).
-- SSH access from your laptop (`ssh-copy-id pi@<pi-host>`), a `PRESAGE_API_KEY` in `daemon/.env`, and an `ELEVENLABS_API_KEY` in `web/.env.local` (for voice cloning).
+- SSH access from your laptop (`ssh-copy-id pi@<pi-host>`), a `PRESAGE_API_KEY` in `daemon/.env`, database keys in `.env`, and an `ELEVENLABS_API_KEY` in `web/.env.local`.
 
 ## Deploy (laptop → Pi)
 The Pi builds nothing. Compiling the Presage bridge or `next build` on a Pi 4 is slow and can run out of memory.
