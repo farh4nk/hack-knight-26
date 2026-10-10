@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
+from cradleecho import diag
 from cradleecho.camera import Camera
 from cradleecho.classifier import SleepStateClassifier
 from cradleecho.config import settings
@@ -141,6 +142,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         logger.info("Starting CradleEcho daemon services...")
+        diag.start()
         cam.start()
         await mock_src.start()
         await presage_src.start()

@@ -11,6 +11,7 @@ import time
 import cv2
 import numpy as np
 
+from cradleecho import diag
 from cradleecho.config import settings
 from cradleecho.sources.base import Reading
 
@@ -181,7 +182,9 @@ class PresageVitalsSource:
 
         if self._gate is not None:
             was_active = self._gate_active
+            t0 = time.perf_counter()
             is_active = self._gate.update(frame)
+            diag.timed("gate", time.perf_counter() - t0)
             self._gate_active = is_active
             if is_active and not was_active:
                 if self._gate_event:
@@ -214,6 +217,7 @@ class PresageVitalsSource:
             if proc.stdin.transport.get_write_buffer_size() > len(data):
                 return
             proc.stdin.write(data)
+            diag.count("frames_to_bridge")
         except (BrokenPipeError, ConnectionResetError, RuntimeError):
             pass
         finally:
@@ -279,6 +283,7 @@ class PresageVitalsSource:
                         data = json.loads(line.decode("utf-8").strip())
                         if "validation" in data:
                             self._validation = (data.get("validation", ""), data.get("hint", ""))
+                            diag.value("validation", str(data.get("validation", "")))
                             continue
 
                         brpm = float(data.get("brpm", 0.0))
@@ -287,6 +292,11 @@ class PresageVitalsSource:
                         motion_val = data.get("motion_index")
                         motion = float(motion_val) if motion_val is not None else None
                         timestamp = float(data.get("t", time.time()))
+
+                        diag.count("bridge_rows")
+                        diag.value("last_row", f"brpm={brpm:.1f} bpm={bpm:.1f} conf={conf:.2f}")
+                        if bpm > 0.0:
+                            diag.count("rows_with_bpm")
 
                         if brpm == 0.0 and bpm == 0.0:
                             conf = 0.0

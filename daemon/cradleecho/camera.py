@@ -16,6 +16,7 @@ os.environ.setdefault(
 import cv2  # noqa: E402
 import numpy as np  # noqa: E402
 
+from cradleecho import diag
 from cradleecho.config import settings
 
 logger = logging.getLogger(__name__)
@@ -171,6 +172,8 @@ class Camera:
         """
         while not self._stop_event.is_set() and not stop.is_set():
             ret, frame = cap.read()
+            if ret:
+                diag.count("cam_delivered")
             if not ret and isinstance(self._device, str) and os.path.exists(self._device):
                 # Rewind video file to frame 0 so recorded clips loop indefinitely
                 cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
@@ -274,11 +277,14 @@ class Camera:
                     seen_seq, frame = self._next_frame(seen_seq)
 
                 if frame is not None:
+                    diag.count("loop_frames")
+                    t0 = time.perf_counter()
                     for listener in self._frame_listeners:
                         try:
                             listener(frame)
                         except Exception:
                             logger.exception("Frame listener failed")
+                    diag.timed("listeners", time.perf_counter() - t0)
 
                     # Frame-diff motion on a half-size image: ~4x cheaper than full-size, and an
                     # 11px blur at half-size matches the old 21px blur at full-size.
