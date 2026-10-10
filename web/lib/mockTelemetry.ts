@@ -94,17 +94,6 @@ export function startMockTelemetry(
   };
 
   const timer = setInterval(() => {
-    if (!cameraOn) {
-      // Camera switched off: no readings, like the real daemon.
-      onMessage({
-        timestamp: new Date().toISOString(),
-        state: "SIGNAL_UNSTABLE",
-        vitals: { brpm: 0, bpm: 0, confidence: 0 },
-        motion_index: 0,
-        camera: { enabled: false, live: false, gate: "DISABLED", framing: "UNKNOWN", sdk_code: null, sdk_hint: null },
-      });
-      return;
-    }
     const state = Date.now() < restlessUntil ? "RESTLESS" : scriptedState();
     const p = PROFILE[state];
     const mode = NIGHT_VISION_MODES[nightVisionModeIndex % NIGHT_VISION_MODES.length];
@@ -112,13 +101,18 @@ export function startMockTelemetry(
     onMessage({
       timestamp: new Date().toISOString(),
       state,
+      mode: "SIMULATED",
       vitals: {
         brpm: Math.max(0, Number(jitter(p.brpm, 1.5).toFixed(1))),
         bpm: Math.max(0, Math.round(jitter(p.bpm, 4))),
         confidence: Number(jitter(p.confidence, 0.05).toFixed(2)),
       },
       motion_index: Number(Math.max(0, jitter(p.motion, 0.05)).toFixed(2)),
-      camera: CAMERA[state][mode],
+      camera: {
+        ...CAMERA[state][mode],
+        enabled: cameraOn,
+        live: cameraOn,
+      },
     });
   }, 1000 / TELEMETRY_HZ);
 

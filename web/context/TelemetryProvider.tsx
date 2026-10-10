@@ -72,8 +72,8 @@ export function TelemetryProvider({ children }: { children: ReactNode }) {
       setSourceModeState(t.mode);
     }
     setHistory((prev) => [...prev.slice(-(HISTORY_LENGTH - 1)), t]);
-    record(toneOf(t, false), t.camera);
-  }, [record]);
+    record(toneOf(t, false, t.mode ?? sourceMode), t.camera);
+  }, [record, sourceMode]);
 
   // Query initial mode from daemon
   useEffect(() => {
