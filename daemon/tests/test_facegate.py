@@ -137,6 +137,8 @@ def test_facegate_throttling():
 
 def test_facegate_default_cascade_is_real():
     """Uses the real bundled Haar cascade (no monkeypatching): loads, finds nothing in a blank frame."""
+    if not hasattr(cv2, "CascadeClassifier") or not hasattr(cv2, "data") or not hasattr(cv2.data, "haarcascades"):
+        pytest.skip("cv2.CascadeClassifier not available in this OpenCV build")
     cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
     assert not cascade.empty()
 

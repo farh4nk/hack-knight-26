@@ -1,7 +1,22 @@
 import sys
-
+from pathlib import Path
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _find_default_presage_cmd() -> str:
+    candidates = [
+        Path(__file__).resolve().parent.parent / "presage_bridge" / "fake_bridge.py",
+        Path("daemon/presage_bridge/fake_bridge.py"),
+        Path("presage_bridge/fake_bridge.py"),
+        Path("/opt/bridge/bridge"),
+    ]
+    for p in candidates:
+        if p.exists():
+            if p.suffix == ".py":
+                return f"{sys.executable} {p}"
+            return str(p)
+    return f"{sys.executable} presage_bridge/fake_bridge.py"
 
 
 class Settings(BaseSettings):
@@ -12,7 +27,7 @@ class Settings(BaseSettings):
     camera: str = Field(default="0", validation_alias="CRADLEECHO_CAMERA")
     source: str = Field(default="mock", validation_alias="CRADLEECHO_SOURCE")
     presage_cmd: str = Field(
-        default=f"{sys.executable} presage_bridge/fake_bridge.py",
+        default_factory=_find_default_presage_cmd,
         validation_alias="CRADLEECHO_PRESAGE_CMD"
     )
     presage_fps: float = Field(default=30.0, gt=0, validation_alias="CRADLEECHO_PRESAGE_FPS")
