@@ -78,32 +78,48 @@ async def _stream_new_frames(
             await asyncio.sleep(0.005)
 
 
+class SetSourceRequest(BaseModel):
+    source: str = Field(description="'mock' / 'simulated' for realistic test loop, or 'real' / 'presage' for live optical sensor")
+
+
 def create_app(
     camera: Camera | None = None,
     source: VitalsSource | None = None,
     classifier: SleepStateClassifier | None = None,
 ) -> FastAPI:
     cam = camera or Camera()
-    src = source or build_source()
     clsf = classifier or SleepStateClassifier()
+
+    # Maintain instances of both mock and real sensor sources for seamless runtime switching
+    mock_src = MockVitalsSource()
+    presage_src = PresageVitalsSource()
     gate = None
-    if isinstance(src, PresageVitalsSource) and src.wants_frames:
-        if settings.face_gate:
-            from cradleecho.facegate import FaceGate
-            gate = FaceGate(
-                chest_room=settings.gate_chest_room,
-                min_face_frac=settings.gate_min_face_frac,
-            )
-            src.set_gate(gate)
-        cam.add_frame_listener(src.push_frame)
-    hub = TelemetryHub(cam, src, clsf, interval_s=0.5)
+
+    if settings.face_gate:
+        from cradleecho.facegate import FaceGate
+        gate = FaceGate(
+            chest_room=settings.gate_chest_room,
+            min_face_frac=settings.gate_min_face_frac,
+        )
+        presage_src.set_gate(gate)
+    cam.add_frame_listener(presage_src.push_frame)
+
+    if source is not None:
+        initial_src = source
+    elif settings.source.lower() == "presage" and settings.presage_api_key:
+        initial_src = presage_src
+    else:
+        initial_src = mock_src
+
+    hub = TelemetryHub(cam, initial_src, clsf, interval_s=0.5)
 
     from cradleecho.overlay import draw_vitals_panel
     def _composite_overlay(frame):
-        if gate is not None:
+        if gate is not None and not isinstance(hub.source, MockVitalsSource):
             gate.draw_overlay(frame)
-        hint = getattr(src, 'validation_hint', '')
-        session_running = src.session_running if isinstance(src, PresageVitalsSource) else None
+        active_src = hub.source
+        hint = getattr(active_src, 'validation_hint', '')
+        session_running = active_src.session_running if isinstance(active_src, PresageVitalsSource) else None
         draw_vitals_panel(
             frame,
             hub.get_latest_payload(),
@@ -116,12 +132,14 @@ def create_app(
     async def lifespan(app: FastAPI):
         logger.info("Starting CradleEcho daemon services...")
         cam.start()
-        await src.start()
+        await mock_src.start()
+        await presage_src.start()
         await hub.start()
         yield
         logger.info("Shutting down CradleEcho daemon services...")
         await hub.stop()
-        await src.stop()
+        await presage_src.stop()
+        await mock_src.stop()
         cam.stop()
 
     app = FastAPI(title="CradleEcho Edge Daemon", lifespan=lifespan)
@@ -138,15 +156,47 @@ def create_app(
 
     # State handles attached to app.state for testing & introspection
     app.state.camera = cam
-    app.state.source = src
+    app.state.mock_source = mock_src
+    app.state.presage_source = presage_src
+    app.state.source = initial_src
     app.state.classifier = clsf
     app.state.hub = hub
-    app.state.source_name = "presage" if isinstance(src, PresageVitalsSource) else "mock"
+    app.state.source_name = "presage" if isinstance(initial_src, PresageVitalsSource) else "mock"
     app.state.revert_task = None
 
     @app.get("/healthz")
     async def healthz():
         return {"status": "ok", "source": app.state.source_name}
+
+    @app.get("/api/source")
+    async def get_source():
+        """Returns the currently active telemetry mode (SIMULATED vs REALTIME)."""
+        is_mock = isinstance(hub.source, MockVitalsSource)
+        return {
+            "source": "mock" if is_mock else "real",
+            "mode": "SIMULATED" if is_mock else "REALTIME",
+            "gate": getattr(getattr(presage_src, "gate", None), "reason", "disabled"),
+        }
+
+    @app.post("/api/source")
+    async def set_source(req: SetSourceRequest):
+        """Switches dynamically between simulated mock data and real camera/Presage sensor."""
+        target = req.source.lower().strip()
+        if target in ("mock", "simulated", "sim"):
+            hub.set_source(mock_src)
+            app.state.source = mock_src
+            app.state.source_name = "mock"
+            logger.info("Switched telemetry source to SIMULATED (Mock)")
+        elif target in ("real", "presage", "camera", "realtime", "sensor"):
+            hub.set_source(presage_src)
+            app.state.source = presage_src
+            app.state.source_name = "presage"
+            logger.info("Switched telemetry source to REALTIME (Presage / Camera Sensor)")
+        else:
+            return JSONResponse({"error": "Invalid source. Use 'mock' or 'real'"}, status_code=400)
+
+        await hub.step()
+        return await get_source()
 
     @app.get("/api/state")
     async def get_state():
@@ -156,7 +206,8 @@ def create_app(
     async def simulate_restless(req: SimulateRestlessRequest | None = None):
         seconds = req.seconds if req is not None else 15.0
         expiry_epoch = clsf.force_restless(duration_s=seconds)
-        src.set_forced_mode("RESTLESS")
+        if hasattr(hub.source, "set_forced_mode"):
+            hub.source.set_forced_mode("RESTLESS")
 
         if getattr(app.state, "revert_task", None):
             app.state.revert_task.cancel()
@@ -165,7 +216,8 @@ def create_app(
         async def _revert():
             try:
                 await asyncio.sleep(seconds)
-                src.set_forced_mode(None)
+                if hasattr(hub.source, "set_forced_mode"):
+                    hub.source.set_forced_mode(None)
             except asyncio.CancelledError:
                 pass
 
