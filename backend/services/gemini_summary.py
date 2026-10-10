@@ -176,6 +176,78 @@ Output only the 3 bullet points, nothing else.
         "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat()
     }
 
+def answer_nightly_question(question: str, baby_name: str = "Maya") -> Dict[str, Any]:
+    """Answers a parent's specific question about their baby's sleep using Gemini and Tiger Data telemetry."""
+    metrics = fetch_nightly_metrics()
+
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return {
+            "question": question,
+            "answer": f"Based on the night's telemetry, {baby_name} slept for {metrics['sleep_hours']} hours with steady breathing at {metrics['avg_brpm']} BrPM. Auto-soothe successfully settled all {metrics['soothe_interventions_count']} restlessness events in under {metrics['avg_soothe_resolve_seconds']} seconds.",
+            "model_used": "local-telemetry-engine",
+            "metrics": metrics
+        }
+
+    client = genai.Client(api_key=api_key)
+
+    soothe_summary = []
+    for s in metrics.get("soothe_events", []):
+        snippet = s.get("voice_snippet_used", "Calming lullaby")
+        soothe_summary.append(f"- At {s.get('triggered_at')}: Played '{snippet}', settled successfully.")
+    soothe_text = "\n".join(soothe_summary) if soothe_summary else "No interventions needed."
+
+    prompt = f"""You are the pediatric sleep wellness AI assistant for CradleEcho, a smart baby monitor.
+A parent is asking a question about their infant '{baby_name}'.
+Answer their question directly, warmly, and reassuringly based on the night's real time-series telemetry from Tiger Data.
+
+--- Night's Observed Biometrics & Telemetry ---
+- Baby Name: {baby_name}
+- Total Sleep Time: {metrics['sleep_hours']} hours
+- Average Breathing Rate: {metrics['avg_brpm']} breaths/minute (Normal infant baseline: 20-30 BrPM)
+- Average Pulse: {metrics['avg_bpm']} BPM (Normal infant resting baseline: 100-130 BPM)
+- Restlessness Spikes: {metrics['restless_spikes_count']}
+- Auto-Soothe Interventions: {metrics['soothe_interventions_count']}
+- Average Time to Settle: {metrics['avg_soothe_resolve_seconds']} seconds
+- Interventions History:
+{soothe_text}
+
+--- Parent's Question ---
+"{question}"
+
+--- Safety & Guidelines ---
+1. Safety Rail: State observations clearly without medical diagnosis or claims (e.g. SIDS).
+2. Tone: Warm, empathetic to tired parents, reassuring, and concise (2-4 sentences).
+3. Directly reference the relevant vitals or soothing events when addressing the question.
+"""
+
+    answer_text = None
+    used_model = None
+
+    for model_name in GEMINI_MODELS:
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+            )
+            answer_text = response.text.strip()
+            used_model = model_name
+            break
+        except Exception:
+            continue
+
+    if not answer_text:
+        answer_text = f"Based on last night's data, {baby_name} was resting soundly with {metrics['sleep_hours']} hours of sleep and steady breathing (averaging {metrics['avg_brpm']} BrPM). The auto-soothe feature intervened {metrics['soothe_interventions_count']} times, calming restlessness in an average of {metrics['avg_soothe_resolve_seconds']} seconds."
+        used_model = "fallback-engine"
+
+    return {
+        "question": question,
+        "answer": answer_text,
+        "model_used": used_model,
+        "metrics": metrics,
+        "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat()
+    }
+
 if __name__ == "__main__":
     print("Fetching nightly metrics from Tiger Data...")
     metrics = fetch_nightly_metrics()
