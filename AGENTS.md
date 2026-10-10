@@ -180,7 +180,7 @@ Deliverable: the parent-facing mobile-first monitoring UI.
   - Green: `Asleep`
   - Yellow/pulsing: `Restless - Auto-Soothe Primed`
   - Red: `Awake`
-  - Grey: `Signal Unstable — Adjust Crib Lighting`
+  - Grey: `Signal Unstable — Hold still, taking a reading` (specific framing or Presage hints take priority)
 - [ ] Task 2.4 — Live vitals gauges: render cards for breathing rate (BrPM) and heart rate (BPM) with simple sparkline charts.
 - [ ] Task 2.5 — Safety UI: place the required disclaimer in the footer: “Cribby is an informational wellness monitor, not a medical or SIDS-prevention device.”
 - [ ] Task 2.6 — Stage demo controls: add a hidden or prominent “Trigger Test Restlessness” button that hits Dev 1’s mock endpoint.
