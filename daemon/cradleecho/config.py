@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     presage_api_key: SecretStr | None = Field(default=None, validation_alias="PRESAGE_API_KEY")
     
     camera: str = Field(default="0", validation_alias="CRADLEECHO_CAMERA")
+    # Requested from the camera. Presage needs >= 25 fps; without an explicit request many UVC
+    # cameras (e.g. Logitech Brio 101) fall back to a 15 fps default mode.
+    camera_fps: float = Field(default=30.0, gt=0, validation_alias="CRADLEECHO_CAMERA_FPS")
     source: str = Field(default="mock", validation_alias="CRADLEECHO_SOURCE")
     presage_cmd: str = Field(
         default_factory=_find_default_presage_cmd,

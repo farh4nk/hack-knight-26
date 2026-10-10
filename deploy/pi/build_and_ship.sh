@@ -5,6 +5,7 @@
 #
 #   deploy/pi/build_and_ship.sh pi@raspberrypi.local              # images + compose file
 #   deploy/pi/build_and_ship.sh pi@raspberrypi.local --with-env   # also copy API keys (Presage, Tiger Data, Gemini, ElevenLabs)
+#   deploy/pi/build_and_ship.sh pi@raspberrypi.local --only daemon   # one image only: daemon | analytics | web
 #
 # On an Apple Silicon Mac the arm64 build is native and fast. On x86 machines run once:
 #   docker run --privileged --rm tonistiigi/binfmt --install arm64
@@ -12,8 +13,23 @@ set -euo pipefail
 
 TARGET="${1:-}"
 WITH_ENV=0
-[[ "${2:-}" == "--with-env" ]] && WITH_ENV=1
-[[ -n "$TARGET" ]] || { sed -n 2,9p "$0"; exit 2; }
+ONLY=""
+[[ -n "$TARGET" ]] || { sed -n 2,10p "$0"; exit 2; }
+shift
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --with-env) WITH_ENV=1 ;;
+    --only) ONLY="${2:-}"; shift ;;
+    *) echo "Unknown option: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+[[ -z "$ONLY" || "$ONLY" == "daemon" || "$ONLY" == "analytics" || "$ONLY" == "web" ]] || { echo "--only takes daemon, analytics or web" >&2; exit 2; }
+want() { [[ -z "$ONLY" || "$ONLY" == "$1" ]]; }
+IMAGES=()
+want daemon && IMAGES+=(cradleecho-daemon:latest)
+want analytics && IMAGES+=(cradleecho-analytics:latest)
+want web && IMAGES+=(cradleecho-web:latest)
 
 cd "$(dirname "$0")/../.."
 REMOTE_DIR='~/cradleecho'
@@ -25,15 +41,21 @@ ssh -o BatchMode=yes -o ConnectTimeout=8 "$TARGET" true 2>/dev/null || {
   exit 1
 }
 
-echo "==> Building daemon (linux/arm64)"
-docker buildx build --platform linux/arm64 --load -t cradleecho-daemon:latest daemon
-echo "==> Building analytics (linux/arm64)"
-docker buildx build --platform linux/arm64 --load -t cradleecho-analytics:latest -f backend/Dockerfile .
-echo "==> Building web (linux/arm64)"
-docker buildx build --platform linux/arm64 --load -t cradleecho-web:latest web
+if want daemon; then
+  echo "==> Building daemon (linux/arm64)"
+  docker buildx build --platform linux/arm64 --load -t cradleecho-daemon:latest daemon
+fi
+if want analytics; then
+  echo "==> Building analytics (linux/arm64)"
+  docker buildx build --platform linux/arm64 --load -t cradleecho-analytics:latest -f backend/Dockerfile .
+fi
+if want web; then
+  echo "==> Building web (linux/arm64)"
+  docker buildx build --platform linux/arm64 --load -t cradleecho-web:latest web
+fi
 
 echo "==> Shipping images to $TARGET (compressed; a few minutes the first time)"
-docker save cradleecho-daemon:latest cradleecho-analytics:latest cradleecho-web:latest | gzip | ssh "$TARGET" 'gunzip | docker load'
+docker save "${IMAGES[@]}" | gzip | ssh "$TARGET" 'gunzip | docker load'
 
 echo "==> Copying compose file and check script"
 ssh "$TARGET" "mkdir -p $REMOTE_DIR"

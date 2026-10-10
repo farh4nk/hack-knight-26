@@ -51,6 +51,9 @@ if command -v v4l2-ctl >/dev/null 2>&1; then
   done
   if [[ -n "$VIDEO_DEV" ]]; then
     ok "USB camera capture node: $VIDEO_DEV"
+    if v4l2-ctl -d "$VIDEO_DEV" --get-ctrl=exposure_dynamic_framerate 2>/dev/null | grep -q ": 1"; then
+      warn "camera may drop below 25 fps in dim light (Presage needs >= 25). Fix: v4l2-ctl -d $VIDEO_DEV --set-ctrl=exposure_dynamic_framerate=0 (resets when the camera is replugged)"
+    fi
   else
     bad "no USB webcam found. Is the Logitech plugged in? Output of v4l2-ctl --list-devices:"
     v4l2-ctl --list-devices 2>&1 | sed 's/^/        /'
