@@ -103,6 +103,10 @@ class TelemetryHub:
             source=self.source,
         )
 
+    def set_source(self, source: VitalsSource) -> None:
+        """Dynamically switches active vitals source between Mock and Real sensor."""
+        self.source = source
+
     def force_unstable(self, seconds: float) -> float:
         self._forced_unstable_until = time.time() + seconds
         return self._forced_unstable_until

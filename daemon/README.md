@@ -83,7 +83,7 @@ The daemon is configured via environment variables or a `.env` file (parsed usin
 | `CRADLEECHO_PORT` | `8000` | Port to bind the server to. |
 | `CRADLEECHO_CORS_ORIGINS` | `*` | Comma-separated allowed CORS origins. |
 | `CRADLEECHO_MIN_BRIGHTNESS` | `35` | Minimum mean brightness threshold for the lighting gate. |
-| `CRADLEECHO_CAMERA_ENABLED` | `True` | Whether the camera starts on. Switch at runtime with `POST /api/camera {"enabled": false}`: off releases the device and ends the Presage session, so no Presage credits are used. |
+| `CRADLEECHO_CAMERA_ENABLED` | `True` | Whether the camera starts on. Switch at runtime with `POST /api/camera {"enabled": false}`: off releases the device and ends the Presage session, so no Presage credits are used. Presage is also paused whenever the simulated source is selected (`POST /api/source {"source": "mock"}`), so credits are only spent with the camera on and the real sensor selected. |
 | `CRADLEECHO_CAMERA_FPS` | `30` | Frame rate requested from the camera (Presage needs >= 25). |
 | `CRADLEECHO_ASLEEP_BRPM_MIN` / `_MAX` | `22` / `40` | Breathing range (per minute) that counts as sleep. Outside it the state is AWAKE. |
 | `CRADLEECHO_CALM_MOTION` | `0.10` | Motion below this is calm (can read ASLEEP). |

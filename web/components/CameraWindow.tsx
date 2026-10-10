@@ -19,7 +19,7 @@ function statusParts(camera: CameraStatus): string[] {
 
 /** The live feed, framed like a window and lit by the baby's current state. */
 export function CameraWindow() {
-  const { latest, stale, setCameraEnabled } = useTelemetry();
+  const { latest, stale, setCameraEnabled, sourceMode, setSourceMode } = useTelemetry();
   const daemon = useDaemonUrl();
   const [offline, setOffline] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -54,7 +54,52 @@ export function CameraWindow() {
   }, [offline]);
 
   return (
-    <section className="flex flex-col gap-4">
+    <section className="flex flex-col gap-3">
+      {/* Vitals Mode Toggle Switch */}
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-white/5 p-2 px-3.5 ring-1 ring-white/10 text-xs">
+        <div className="flex items-center gap-2">
+          <span className="font-semibold text-ink-dim">Telemetry Sensor:</span>
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium ${
+              sourceMode === "REALTIME"
+                ? "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30"
+                : "bg-tone/15 text-tone ring-1 ring-tone/30"
+            }`}
+          >
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${
+                sourceMode === "REALTIME" ? "bg-emerald-400" : "bg-tone"
+              } animate-pulse`}
+            />
+            {sourceMode === "REALTIME" ? "Live Optical Sensor" : "Simulated Demo"}
+          </span>
+        </div>
+
+        <div className="flex items-center rounded-xl bg-black/40 p-0.5 ring-1 ring-white/10">
+          <button
+            type="button"
+            onClick={() => setSourceMode("mock")}
+            className={`rounded-lg px-2.5 py-1 text-xs transition ${
+              sourceMode === "SIMULATED"
+                ? "bg-tone text-[#0a0b15] font-semibold shadow-sm"
+                : "text-ink-dim hover:text-ink"
+            }`}
+          >
+            ⚡ Simulated
+          </button>
+          <button
+            type="button"
+            onClick={() => setSourceMode("real")}
+            className={`rounded-lg px-2.5 py-1 text-xs transition ${
+              sourceMode === "REALTIME"
+                ? "bg-emerald-400 text-[#0a0b15] font-semibold shadow-sm"
+                : "text-ink-dim hover:text-ink"
+            }`}
+          >
+            🎥 Real-Time Camera
+          </button>
+        </div>
+      </div>
       <div
         className="rounded-[2rem] p-1.5 ring-1 ring-white/10"
         style={{

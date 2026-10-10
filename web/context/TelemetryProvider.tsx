@@ -14,6 +14,7 @@ import {
   MOCK,
   STALE_AFTER_MS,
   cameraUrl,
+  daemonUrl,
   simulateRestlessUrl,
   wsUrl,
 } from "@/lib/config";
@@ -32,6 +33,10 @@ export interface TelemetryContextValue {
   /** No packet received for STALE_AFTER_MS. */
   stale: boolean;
   mock: boolean;
+  /** Active telemetry mode on the edge daemon: SIMULATED (mock) vs REALTIME (camera). */
+  sourceMode: "SIMULATED" | "REALTIME";
+  /** Switches daemon between simulated data and real optical camera sensor. */
+  setSourceMode: (mode: "mock" | "real") => Promise<void>;
   /** State changes since the page opened, newest first. */
   events: ActivityEvent[];
   /** When the current state began (ms since epoch), as observed by this page. */
@@ -54,6 +59,7 @@ export function TelemetryProvider({ children }: { children: ReactNode }) {
   const [history, setHistory] = useState<Telemetry[]>([]);
   const [connected, setConnected] = useState(MOCK);
   const [stale, setStale] = useState(true);
+  const [sourceMode, setSourceModeState] = useState<"SIMULATED" | "REALTIME">("SIMULATED");
   const { events, stateSince, record, alerts } = useActivity();
   const lastMessageAt = useRef(0);
   const mockSource = useRef<MockTelemetrySource | null>(null);
@@ -62,9 +68,44 @@ export function TelemetryProvider({ children }: { children: ReactNode }) {
     lastMessageAt.current = Date.now();
     setStale(false);
     setLatest(t);
+    if (t.mode) {
+      setSourceModeState(t.mode);
+    }
     setHistory((prev) => [...prev.slice(-(HISTORY_LENGTH - 1)), t]);
     record(toneOf(t, false), t.camera);
   }, [record]);
+
+  // Query initial mode from daemon
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${daemonUrl()}/api/source`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled && data.mode) {
+          setSourceModeState(data.mode);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const setSourceMode = useCallback(async (mode: "mock" | "real") => {
+    try {
+      const res = await fetch(`${daemonUrl()}/api/source`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source: mode }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.mode) setSourceModeState(data.mode);
+      }
+    } catch (e) {
+      console.warn("Failed to toggle source mode on daemon:", e);
+    }
+  }, []);
 
   // Data source: in-browser mock, or the daemon WebSocket with reconnect backoff.
   useEffect(() => {
@@ -167,7 +208,20 @@ export function TelemetryProvider({ children }: { children: ReactNode }) {
 
   return (
     <TelemetryContext.Provider
-      value={{ latest, history, connected, stale, mock: MOCK, events, stateSince, alerts, simulateRestless, setCameraEnabled }}
+      value={{
+        latest,
+        history,
+        connected,
+        stale,
+        mock: MOCK,
+        sourceMode,
+        setSourceMode,
+        events,
+        stateSince,
+        alerts,
+        simulateRestless,
+        setCameraEnabled,
+      }}
     >
       {children}
     </TelemetryContext.Provider>

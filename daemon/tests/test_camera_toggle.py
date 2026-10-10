@@ -190,3 +190,25 @@ async def test_paused_presage_ignores_frames_even_if_the_gate_sees_a_face(presag
         assert gate.updates == 1, "frames are evaluated again after resuming"
     finally:
         await source.stop()
+
+
+def test_presage_runs_only_with_camera_on_and_the_real_sensor_selected():
+    """Presage is the paid session: it must not run for simulated data or with the camera off."""
+    camera = Camera(device="none")
+    app = create_app(camera=camera, source=MockVitalsSource(seed=1), classifier=SleepStateClassifier())
+    presage = app.state.presage_source
+    with TestClient(app) as client:
+        assert presage.paused, "simulated source selected at startup: Presage must be paused"
+
+        client.post("/api/source", json={"source": "real"})
+        assert not presage.paused, "real sensor + camera on: Presage may run"
+
+        client.post("/api/camera", json={"enabled": False})
+        assert presage.paused, "camera off pauses Presage even with the real sensor selected"
+
+        client.post("/api/source", json={"source": "mock"})
+        client.post("/api/camera", json={"enabled": True})
+        assert presage.paused, "turning the camera on must not start Presage while simulated"
+
+        client.post("/api/source", json={"source": "real"})
+        assert not presage.paused

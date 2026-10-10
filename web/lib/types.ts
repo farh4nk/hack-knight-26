@@ -35,6 +35,7 @@ export interface CameraStatus {
 export interface Telemetry {
   timestamp: string; // ISO 8601
   state: SleepState;
+  mode?: "SIMULATED" | "REALTIME";
   vitals: Vitals;
   motion_index: number;
   camera?: CameraStatus; // additive; older daemons omit it
