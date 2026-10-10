@@ -208,7 +208,11 @@ class Camera:
                 if cap is not None and cap.isOpened():
                     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
                     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-                    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # best effort; honoured by V4L2
+                    cap.set(cv2.CAP_PROP_FPS, settings.camera_fps)
+                    # Do NOT set CAP_PROP_BUFFERSIZE=1: with a single V4L2 buffer the driver cannot
+                    # capture while a frame is being read, which halves the rate (30 -> 15 fps on a
+                    # Pi 4 + UVC camera) and Presage then rejects the stream (< 25 fps). The reader
+                    # thread already drops stale frames, so extra buffers don't add latency.
                     reader = threading.Thread(
                         target=self._reader_loop, args=(cap,), name="CameraReaderThread", daemon=True
                     )
