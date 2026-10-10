@@ -70,6 +70,13 @@ Verified (on an arm64 machine, no Pi hardware):
 (Presage + face gate + JPEG encoding), `/dev/dri` passthrough, and the Logitech's actual node and formats.
 
 ## Troubleshooting
+- **Every request to `hack-knight.local` takes ~5 s (page load 5 s, live data 10 s):** your phone hotspot is
+  IPv6-only. macOS then never takes an IPv4 address (check `ipconfig getifaddr en0`: empty, or `192.0.0.2` from
+  `ifconfig en0`), and each `.local` lookup waits 5 s for an IPv4 answer that cannot come. Skip the lookup:
+  run `deploy/pi/find_pi.sh` on your laptop. It finds the Pi by IPv6 neighbor discovery and prints instant URLs
+  (`http://[<ipv6>]:3000`, measured 0.14 s vs 5.1 s). `deploy/pi/find_pi.sh --ssh-config hack-knight.local` also makes
+  `ssh pi@hack-knight.local` use the Pi's permanent link-local address (undo with `--remove-ssh-config`). The global
+  address changes if the hotspot reconnects; just re-run the script. A hotspot that gives IPv4 (or Ethernet) avoids this.
 - **Presage keeps saying `kFrameRateTooLow`:** see "Tuning on a Pi 4" above.
 - **"Camera offline" / synthetic feed:** run `./pi_check.sh`. A Pi has many `/dev/video*` nodes and the
   Logitech may not be `video0`. `--write` stores the right one in `.env`.

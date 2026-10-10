@@ -93,7 +93,12 @@ fi
 echo
 echo "Open from another device on this network:"
 echo "  http://$(hostname | sed "s/\.local$//").local:3000"
-for ip in $(hostname -I 2>/dev/null); do echo "  http://$ip:3000"; done
+# Real network addresses only: skip Docker's internal bridges and link-local IPv6.
+ADDRS=$(ip -o addr show scope global 2>/dev/null | awk '$2 !~ /^(docker|br-|veth)/ {split($4, a, "/"); print a[1]}')
+for ip in $ADDRS; do
+  if [[ "$ip" == *:* ]]; then echo "  http://[$ip]:3000"; else echo "  http://$ip:3000"; fi
+done
+echo "  (If .local is slow from your Mac, run deploy/pi/find_pi.sh there: see docs/pi-setup.md.)"
 echo
 echo "$FAILS failed, $WARNS warnings"
 [[ $FAILS -eq 0 ]]
