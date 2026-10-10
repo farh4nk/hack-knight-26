@@ -73,6 +73,25 @@ def test_simulate_restless(test_app):
         assert state_resp.json()["state"] == "RESTLESS"
 
 
+def test_source_toggle(test_app):
+    with TestClient(test_app) as client:
+        resp = client.get("/api/source")
+        assert resp.status_code == 200
+        assert "source" in resp.json()
+
+        # Switch to real
+        resp = client.post("/api/source", json={"source": "real"})
+        assert resp.status_code == 200
+        assert resp.json()["source"] == "real"
+        assert resp.json()["mode"] == "REALTIME"
+
+        # Switch back to mock
+        resp = client.post("/api/source", json={"source": "mock"})
+        assert resp.status_code == 200
+        assert resp.json()["source"] == "mock"
+        assert resp.json()["mode"] == "SIMULATED"
+
+
 def test_video_feed_mjpeg(test_app):
     with TestClient(test_app) as client:
         response = client.get("/video_feed?limit=1")

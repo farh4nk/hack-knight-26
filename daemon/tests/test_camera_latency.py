@@ -63,3 +63,27 @@ def test_slow_consumer_sees_newest_frame(monkeypatch):
     finally:
         cam.stop()
         cap.release()
+
+
+def test_capture_requests_fps_and_never_caps_buffer(monkeypatch):
+    """CAP_PROP_BUFFERSIZE=1 halved a Pi 4 + UVC camera to 15 fps, below Presage's 25 fps minimum."""
+    import cv2
+
+    set_calls: list[int] = []
+
+    class RecordingCap(BufferedCap):
+        def set(self, prop, val) -> None:
+            set_calls.append(prop)
+
+    cap = RecordingCap()
+    monkeypatch.setattr("cv2.VideoCapture", lambda x: cap)
+    cam = Camera(device="0")
+    cam.start()
+    try:
+        time.sleep(0.3)
+    finally:
+        cam.stop()
+        cap.release()
+
+    assert cv2.CAP_PROP_BUFFERSIZE not in set_calls
+    assert cv2.CAP_PROP_FPS in set_calls

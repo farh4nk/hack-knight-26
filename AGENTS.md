@@ -97,7 +97,8 @@ All four developers should build against this standard WebSocket telemetry paylo
     "gate": "OPEN",
     "framing": "OK",
     "sdk_code": "kFaceTooLow",
-    "sdk_hint": "Move up, or tilt the camera down."
+    "sdk_hint": "Move up, or tilt the camera down.",
+    "enabled": true
   }
 }
 ```
@@ -113,6 +114,7 @@ Valid states: `ASLEEP | DROWSY | RESTLESS | AWAKE | SIGNAL_UNSTABLE`
 - `sdk_hint` (string | null): human-readable Presage fix instruction, or `null`
 - `night_vision` (string): `OFF`, `AUTO`, or `ON` — configured night vision mode
 - `enhancing` (bool): `true` when low-light enhancement is currently applied to the video feed
+- `enabled` (bool, optional): `false` when the user switched the camera off (`POST /api/camera`); vitals are zeroed, `state` is `SIGNAL_UNSTABLE`, and consumers should not record the reading
 
 ## Team responsibilities
 
@@ -124,8 +126,11 @@ Deliverable: a local service that streams video and emits parsed biometric state
 - [x] Task 1.2 — Presage integration: connect the Presage SDK (SmartSpectra) to pull breathing rate (BrPM), pulse rate (BPM), and tracking confidence. Fallback: write a mock telemetry generator first so Dev 2 is not blocked.
 - [x] Task 1.3 — Sleep state classifier: implement the rolling state machine:
   - If confidence < 0.40 => `SIGNAL_UNSTABLE`
-  - If BrPM is stable (20–30) with low motion => `ASLEEP`
-  - If BrPM spikes by > 25% or motion is high => `RESTLESS`
+  - `AWAKE` is the default: clear movement, or breathing outside the sleeping range (22–40/min)
+  - `ASLEEP` needs calm movement AND in-range breathing held for 20 s (until then `DROWSY`)
+  - `RESTLESS` = a sleeper stirring: moderate movement with in-range breathing, or breathing > 25% above the baby's sleeping baseline
+  - No breathing estimate yet (Presage warm-up) => `SIGNAL_UNSTABLE`
+  - All thresholds are `CRADLEECHO_*` settings (see `daemon/README.md`)
 - [x] Task 1.4 — Stage demo trigger: create a manual REST endpoint, `POST /api/simulate-restless`, that forces the state machine to `RESTLESS` for 15 seconds.
 - [x] Task 1.5 — WebSocket server: broadcast the telemetry JSON over `ws://localhost:8000/ws/telemetry` at 2 Hz.
 - [ ] Task 1.6 - Dockerize the daemon and package it with LinuxKit for usage on a raspberry pi

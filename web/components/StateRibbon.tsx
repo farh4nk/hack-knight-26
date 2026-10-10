@@ -1,7 +1,7 @@
 "use client";
 
 import { useTelemetry } from "@/context/TelemetryProvider";
-import { TONE_HEX, toneFor, type Tone } from "@/lib/stateCopy";
+import { TONE_HEX, toneOf, type Tone } from "@/lib/stateCopy";
 
 /** The last minute as a colored band: how the state has moved. */
 export function StateRibbon() {
@@ -9,7 +9,7 @@ export function StateRibbon() {
 
   const runs: { tone: Tone; count: number }[] = [];
   for (const t of history) {
-    const tone = toneFor(t.state, false);
+    const tone = toneOf(t, false);
     const last = runs[runs.length - 1];
     if (last && last.tone === tone) last.count++;
     else runs.push({ tone, count: 1 });

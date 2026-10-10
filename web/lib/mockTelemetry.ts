@@ -73,6 +73,7 @@ let nightVisionModeIndex = 0;
 export interface MockTelemetrySource {
   stop: () => void;
   simulateRestless: () => void;
+  setCameraEnabled: (enabled: boolean) => void;
 }
 
 export function startMockTelemetry(
@@ -81,6 +82,7 @@ export function startMockTelemetry(
   const startedAt = Date.now();
   const cycleSeconds = SCRIPT.reduce((sum, s) => sum + s.seconds, 0);
   let restlessUntil = 0;
+  let cameraOn = true;
 
   const scriptedState = (): SleepState => {
     let t = ((Date.now() - startedAt) / 1000) % cycleSeconds;
@@ -92,6 +94,17 @@ export function startMockTelemetry(
   };
 
   const timer = setInterval(() => {
+    if (!cameraOn) {
+      // Camera switched off: no readings, like the real daemon.
+      onMessage({
+        timestamp: new Date().toISOString(),
+        state: "SIGNAL_UNSTABLE",
+        vitals: { brpm: 0, bpm: 0, confidence: 0 },
+        motion_index: 0,
+        camera: { enabled: false, live: false, gate: "DISABLED", framing: "UNKNOWN", sdk_code: null, sdk_hint: null },
+      });
+      return;
+    }
     const state = Date.now() < restlessUntil ? "RESTLESS" : scriptedState();
     const p = PROFILE[state];
     const mode = NIGHT_VISION_MODES[nightVisionModeIndex % NIGHT_VISION_MODES.length];
@@ -113,6 +126,9 @@ export function startMockTelemetry(
     stop: () => clearInterval(timer),
     simulateRestless: () => {
       restlessUntil = Date.now() + SIMULATE_RESTLESS_MS;
+    },
+    setCameraEnabled: (enabled) => {
+      cameraOn = enabled;
     },
   };
 }

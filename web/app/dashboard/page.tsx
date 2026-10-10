@@ -1,17 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Disclaimer } from "@/components/Disclaimer";
 import { GeminiNightQA } from "@/components/GeminiNightQA";
 import { Header } from "@/components/Header";
-import { analyticsUrl, BABY_NAME } from "@/lib/config";
+import { babyTitle, getBabyName, useBabyName } from "@/lib/babyName";
+import { analyticsUrl } from "@/lib/config";
 
 interface NightlySummaryResponse {
   baby_name: string;
   model_used?: string;
   summary_bullets: string[];
   metrics: {
+    bedtime?: string;
+    wake_time?: string;
+    window_start?: string;
+    window_end?: string;
+    scheduled_hours: number;
     sleep_hours: number;
+    sleep_efficiency_percent: number;
     avg_brpm: number;
     avg_bpm: number;
     restless_spikes_count: number;
@@ -43,21 +50,39 @@ const STATE_COLORS: Record<string, { bg: string; text: string; label: string }> 
   SIGNAL_UNSTABLE: { bg: "bg-white/20", text: "text-ink-faint", label: "Unstable" },
 };
 
+function formatTime12(timeStr: string): string {
+  try {
+    const [hStr, mStr] = timeStr.split(":");
+    let h = parseInt(hStr, 10);
+    const m = parseInt(mStr || "0", 10);
+    const ampm = h >= 12 ? "PM" : "AM";
+    h = h % 12;
+    if (h === 0) h = 12;
+    const minPadded = m < 10 ? `0${m}` : `${m}`;
+    return `${h}:${minPadded} ${ampm}`;
+  } catch {
+    return timeStr;
+  }
+}
+
 export default function DashboardPage() {
+  const title = babyTitle(useBabyName() ?? "");
+  const [bedtime, setBedtime] = useState("20:00");
+  const [wakeTime, setWakeTime] = useState("07:00");
   const [summary, setSummary] = useState<NightlySummaryResponse | null>(null);
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   const [trend, setTrend] = useState<TrendEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadDashboardData = async () => {
+  const loadDashboardData = useCallback(async (bTime = bedtime, wTime = wakeTime) => {
     setLoading(true);
     setError(null);
     try {
       const [sumRes, timeRes, trendRes] = await Promise.all([
-        fetch(`${analyticsUrl()}/api/nightly-summary?baby_name=${BABY_NAME}`),
-        fetch(`${analyticsUrl()}/api/sleep-timeline?limit=100`),
-        fetch(`${analyticsUrl()}/api/vitals-trend?limit=60`),
+        fetch(`${analyticsUrl()}/api/nightly-summary?baby_name=${encodeURIComponent(babyTitle(getBabyName()))}&bedtime=${bTime}&wake_time=${wTime}`),
+        fetch(`${analyticsUrl()}/api/sleep-timeline?bedtime=${bTime}&wake_time=${wTime}&limit=120`),
+        fetch(`${analyticsUrl()}/api/vitals-trend?bedtime=${bTime}&wake_time=${wTime}&limit=60`),
       ]);
 
       if (sumRes.ok) setSummary(await sumRes.json());
@@ -74,18 +99,18 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [bedtime, wakeTime]);
 
   useEffect(() => {
     let cancelled = false;
     Promise.resolve().then(async () => {
       if (cancelled) return;
-      await loadDashboardData();
+      await loadDashboardData("20:00", "07:00");
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loadDashboardData]);
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-5 sm:px-8">
@@ -95,17 +120,106 @@ export default function DashboardPage() {
       <section className="mt-4">
         <span className="text-xs font-semibold uppercase tracking-wider text-tone">Night Intelligence</span>
         <h1 className="mt-1 font-display text-4xl text-ink [font-variation-settings:'SOFT'_100,'opsz'_144] sm:text-5xl">
-          {BABY_NAME}’s Sleep Report
+          {title}’s Sleep Report
         </h1>
         <p className="mt-2 text-sm text-ink-dim">
-          Timescale time-series vitals & Gemini 3.5 sleep analytics
+          Tiger Data time-series vitals scoped to your scheduled bedtime window & Gemini 3.5 sleep analytics
         </p>
+      </section>
+
+      {/* Bedtime Window Controls Card */}
+      <section className="mt-8 rounded-3xl bg-white/5 p-6 ring-1 ring-white/10 sm:p-7">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-tone">🌙 Bedtime & Wake Schedule</span>
+              <span className="rounded-full bg-tone/15 px-2.5 py-0.5 text-[11px] font-medium text-tone">
+                Parent Configured
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-ink-dim">
+              Set {title}’s scheduled crib hours. Telemetry queries, hypnogram, and Gemini summaries scope to this exact window.
+            </p>
+          </div>
+
+          {/* Quick preset buttons */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-ink-faint">Presets:</span>
+            {[
+              { label: "8 PM – 7 AM", b: "20:00", w: "07:00" },
+              { label: "7:30 PM – 6:30 AM", b: "19:30", w: "06:30" },
+              { label: "8:30 PM – 6:30 AM", b: "20:30", w: "06:30" },
+              { label: "9 PM – 7:30 AM", b: "21:00", w: "07:30" },
+            ].map((p) => (
+              <button
+                key={p.label}
+                type="button"
+                onClick={() => {
+                  setBedtime(p.b);
+                  setWakeTime(p.w);
+                  loadDashboardData(p.b, p.w);
+                }}
+                className={`rounded-full px-3 py-1 text-xs transition ${
+                  bedtime === p.b && wakeTime === p.w
+                    ? "bg-tone text-[#0a0b15] font-semibold"
+                    : "bg-white/5 text-ink-dim ring-1 ring-white/10 hover:bg-white/10 hover:text-ink"
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Schedule Inputs */}
+        <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="rounded-2xl bg-white/5 p-3.5 ring-1 ring-white/10">
+            <label className="text-xs text-ink-faint">Bedtime (Put to Bed)</label>
+            <div className="mt-1.5 flex items-center gap-2">
+              <input
+                type="time"
+                value={bedtime}
+                onChange={(e) => setBedtime(e.target.value)}
+                className="w-full rounded-xl bg-black/30 px-3 py-1.5 text-sm text-ink ring-1 ring-white/10 focus:outline-none focus:ring-tone/50"
+              />
+              <span className="text-xs text-tone whitespace-nowrap font-medium">
+                {formatTime12(bedtime)}
+              </span>
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-white/5 p-3.5 ring-1 ring-white/10">
+            <label className="text-xs text-ink-faint">Wake Time (Morning Wake-Up)</label>
+            <div className="mt-1.5 flex items-center gap-2">
+              <input
+                type="time"
+                value={wakeTime}
+                onChange={(e) => setWakeTime(e.target.value)}
+                className="w-full rounded-xl bg-black/30 px-3 py-1.5 text-sm text-ink ring-1 ring-white/10 focus:outline-none focus:ring-tone/50"
+              />
+              <span className="text-xs text-tone whitespace-nowrap font-medium">
+                {formatTime12(wakeTime)}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center">
+            <button
+              type="button"
+              onClick={() => loadDashboardData(bedtime, wakeTime)}
+              disabled={loading}
+              className="w-full rounded-2xl bg-tone px-4 py-3 text-sm font-semibold text-[#0a0b15] transition hover:opacity-90 disabled:opacity-50"
+            >
+              {loading ? "Re-scoping…" : "Apply Bedtime Window"}
+            </button>
+          </div>
+        </div>
       </section>
 
       {loading && (
         <div role="status" className="mt-12 flex items-center gap-3 text-sm text-ink-dim">
           <span className="h-4 w-4 animate-spin rounded-full border-2 border-tone border-t-transparent" aria-hidden />
-          Aggregating telemetry from Tiger Data…
+          Aggregating telemetry from Tiger Data for {formatTime12(bedtime)} – {formatTime12(wakeTime)}…
         </div>
       )}
 
@@ -114,7 +228,7 @@ export default function DashboardPage() {
           <p className="text-sm text-ink-dim">{error}</p>
           <button
             type="button"
-            onClick={loadDashboardData}
+            onClick={() => loadDashboardData(bedtime, wakeTime)}
             className="mt-3 text-xs underline underline-offset-4 hover:text-ink"
           >
             Retry loading
@@ -127,40 +241,46 @@ export default function DashboardPage() {
           {/* Key Metrics Grid */}
           <section className="mt-10 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
             <div className="rounded-2xl bg-white/5 p-4 ring-1 ring-white/10">
-              <span className="text-xs text-ink-faint">Total Sleep</span>
-              <p className="mt-2 font-display text-2xl text-ink tabular-nums [font-variation-settings:'SOFT'_100]">
-                {summary?.metrics.sleep_hours ?? "8.0"} <span className="text-sm font-sans text-ink-dim">hrs</span>
+              <span className="text-xs text-ink-faint">Sleep Efficiency</span>
+              <p className="mt-2 font-display text-2xl text-tone tabular-nums [font-variation-settings:'SOFT'_100]">
+                {summary?.metrics.sleep_efficiency_percent ?? "100"} <span className="text-sm font-sans text-ink-dim">%</span>
               </p>
+              <span className="mt-1 block text-[11px] text-ink-faint">Target: &gt;85%</span>
+            </div>
+            <div className="rounded-2xl bg-white/5 p-4 ring-1 ring-white/10">
+              <span className="text-xs text-ink-faint">Scheduled Crib Time</span>
+              <p className="mt-2 font-display text-2xl text-ink tabular-nums [font-variation-settings:'SOFT'_100]">
+                {summary?.metrics.scheduled_hours ?? "11.0"} <span className="text-sm font-sans text-ink-dim">hrs</span>
+              </p>
+              <span className="mt-1 block text-[11px] text-ink-faint">{formatTime12(bedtime)} – {formatTime12(wakeTime)}</span>
+            </div>
+            <div className="rounded-2xl bg-white/5 p-4 ring-1 ring-white/10">
+              <span className="text-xs text-ink-faint">Total Asleep</span>
+              <p className="mt-2 font-display text-2xl text-ink tabular-nums [font-variation-settings:'SOFT'_100]">
+                {summary?.metrics.sleep_hours ?? "11.0"} <span className="text-sm font-sans text-ink-dim">hrs</span>
+              </p>
+              <span className="mt-1 block text-[11px] text-ink-faint">Logged calm rest</span>
             </div>
             <div className="rounded-2xl bg-white/5 p-4 ring-1 ring-white/10">
               <span className="text-xs text-ink-faint">Avg Breathing</span>
               <p className="mt-2 font-display text-2xl text-ink tabular-nums [font-variation-settings:'SOFT'_100]">
-                {summary?.metrics.avg_brpm ?? "24.6"} <span className="text-sm font-sans text-ink-dim">BrPM</span>
+                {summary?.metrics.avg_brpm ?? "24.3"} <span className="text-sm font-sans text-ink-dim">BrPM</span>
               </p>
+              <span className="mt-1 block text-[11px] text-ink-faint">Baseline: 20–30</span>
             </div>
             <div className="rounded-2xl bg-white/5 p-4 ring-1 ring-white/10">
               <span className="text-xs text-ink-faint">Avg Pulse</span>
               <p className="mt-2 font-display text-2xl text-ink tabular-nums [font-variation-settings:'SOFT'_100]">
-                {summary?.metrics.avg_bpm ?? "114"} <span className="text-sm font-sans text-ink-dim">BPM</span>
+                {summary?.metrics.avg_bpm ?? "109"} <span className="text-sm font-sans text-ink-dim">BPM</span>
               </p>
-            </div>
-            <div className="rounded-2xl bg-white/5 p-4 ring-1 ring-white/10">
-              <span className="text-xs text-ink-faint">Restless Spikes</span>
-              <p className="mt-2 font-display text-2xl text-ink tabular-nums [font-variation-settings:'SOFT'_100]">
-                {summary?.metrics.restless_spikes_count ?? "2"} <span className="text-sm font-sans text-ink-dim">events</span>
-              </p>
+              <span className="mt-1 block text-[11px] text-ink-faint">Baseline: 100–130</span>
             </div>
             <div className="rounded-2xl bg-white/5 p-4 ring-1 ring-white/10">
               <span className="text-xs text-ink-faint">Auto-Soothed</span>
               <p className="mt-2 font-display text-2xl text-ink tabular-nums [font-variation-settings:'SOFT'_100]">
                 {summary?.metrics.soothe_interventions_count ?? "2"} <span className="text-sm font-sans text-ink-dim">times</span>
               </p>
-            </div>
-            <div className="rounded-2xl bg-white/5 p-4 ring-1 ring-white/10">
-              <span className="text-xs text-ink-faint">Avg Settle Time</span>
-              <p className="mt-2 font-display text-2xl text-ink tabular-nums [font-variation-settings:'SOFT'_100]">
-                {summary?.metrics.avg_soothe_resolve_seconds ?? "32"} <span className="text-sm font-sans text-ink-dim">sec</span>
-              </p>
+              <span className="mt-1 block text-[11px] text-ink-faint">~{summary?.metrics.avg_soothe_resolve_seconds ?? 40}s avg settle</span>
             </div>
           </section>
 
@@ -170,7 +290,7 @@ export default function DashboardPage() {
               <h2 className="font-display text-2xl text-ink [font-variation-settings:'SOFT'_100]">
                 Sleep State Timeline
               </h2>
-              <span className="text-xs text-ink-faint">Tiger Data Hypertable · 2 Hz Telemetry</span>
+              <span className="text-xs text-ink-faint">Tiger Data Hypertable · Scoped to Scheduled Night</span>
             </div>
 
             {/* Timeline Segment Bar */}
@@ -198,10 +318,10 @@ export default function DashboardPage() {
                 )}
               </div>
               <div className="mt-2 flex justify-between text-xs text-ink-faint">
-                <span>Bedtime (8:30 PM)</span>
+                <span>Bedtime ({formatTime12(bedtime)})</span>
                 <span>Midnight</span>
                 <span>3:00 AM (Restless spike)</span>
-                <span>Morning (6:30 AM)</span>
+                <span>Wake Time ({formatTime12(wakeTime)})</span>
               </div>
             </div>
 
@@ -228,7 +348,7 @@ export default function DashboardPage() {
                   <p className="mt-1 text-xs text-ink-dim">Target infant range: 20–30 breaths/min</p>
                 </div>
                 <span className="font-display text-2xl text-tone tabular-nums">
-                  {trend.length > 0 ? trend[trend.length - 1].breathing_rate : 24.2}
+                  {trend.length > 0 ? trend[trend.length - 1].breathing_rate : 24.3}
                 </span>
               </div>
 
@@ -250,7 +370,6 @@ export default function DashboardPage() {
                       points={trend
                         .map((pt, i) => {
                           const x = (i / (trend.length - 1)) * 300;
-                          // map brpm 15-40 to y 90-10
                           const clamped = Math.max(15, Math.min(40, pt.breathing_rate || 24));
                           const y = 90 - ((clamped - 15) / 25) * 80;
                           return `${x},${y}`;
@@ -261,9 +380,9 @@ export default function DashboardPage() {
                 </svg>
               </div>
               <div className="mt-2 flex justify-between text-xs text-ink-faint">
-                <span>Start of night</span>
-                <span>Restless spike (32 BrPM)</span>
-                <span>Now</span>
+                <span>Bedtime ({formatTime12(bedtime)})</span>
+                <span>Restless spike (36 BrPM)</span>
+                <span>Wake Time ({formatTime12(wakeTime)})</span>
               </div>
             </div>
 
@@ -277,7 +396,7 @@ export default function DashboardPage() {
                   <p className="mt-1 text-xs text-ink-dim">Normal infant resting range: 100–130 BPM</p>
                 </div>
                 <span className="font-display text-2xl text-rose-300 tabular-nums">
-                  {trend.length > 0 ? trend[trend.length - 1].heart_rate : 115}
+                  {trend.length > 0 ? trend[trend.length - 1].heart_rate : 109}
                 </span>
               </div>
 
@@ -297,8 +416,7 @@ export default function DashboardPage() {
                       points={trend
                         .map((pt, i) => {
                           const x = (i / (trend.length - 1)) * 300;
-                          // map bpm 90-150 to y 90-10
-                          const clamped = Math.max(90, Math.min(150, pt.heart_rate || 115));
+                          const clamped = Math.max(90, Math.min(150, pt.heart_rate || 109));
                           const y = 90 - ((clamped - 90) / 60) * 80;
                           return `${x},${y}`;
                         })
@@ -308,9 +426,9 @@ export default function DashboardPage() {
                 </svg>
               </div>
               <div className="mt-2 flex justify-between text-xs text-ink-faint">
-                <span>Start of night</span>
-                <span>Restless spike (132 BPM)</span>
-                <span>Now</span>
+                <span>Bedtime ({formatTime12(bedtime)})</span>
+                <span>Restless spike (134 BPM)</span>
+                <span>Wake Time ({formatTime12(wakeTime)})</span>
               </div>
             </div>
           </section>
@@ -321,7 +439,7 @@ export default function DashboardPage() {
               <h2 className="font-display text-2xl text-ink [font-variation-settings:'SOFT'_100]">
                 Gemini Nightly Synthesis
               </h2>
-              <span className="text-xs text-ink-faint">Gemini 3.5 Flash Lite Briefing</span>
+              <span className="text-xs text-ink-faint">Gemini 3.5 Flash Lite Briefing · {formatTime12(bedtime)} to {formatTime12(wakeTime)}</span>
             </div>
             <ul className="mt-6 flex flex-col gap-4">
               {summary?.summary_bullets.map((bullet, idx) => (
@@ -334,20 +452,20 @@ export default function DashboardPage() {
               )) || (
                 <>
                   <li className="font-display text-lg text-ink [font-variation-settings:'SOFT'_100]">
-                    🌙 Maya slept 8.0 hours uninterrupted with steady breathing rhythm throughout the early hours.
+                    🌙 {title} slept 11.0 hours uninterrupted with 100% sleep efficiency during the scheduled bedtime.
                   </li>
                   <li className="font-display text-lg text-ink [font-variation-settings:'SOFT'_100]">
-                    🕊️ Auto-soothe intervened twice during restlessness, gently settling her back to sleep within 35 seconds.
+                    🕊️ Auto-soothe intervened twice during restlessness, gently settling them back to sleep within 40 seconds.
                   </li>
                   <li className="font-display text-lg text-ink [font-variation-settings:'SOFT'_100]">
-                    ✨ Vital signals remained stable with average breathing rate at 24.6 BrPM.
+                    ✨ Vital signals remained stable with average breathing rate at 24.3 BrPM.
                   </li>
                 </>
               )}
             </ul>
           </section>
 
-          <GeminiNightQA />
+          <GeminiNightQA bedtime={bedtime} wakeTime={wakeTime} />
         </>
       )}
 

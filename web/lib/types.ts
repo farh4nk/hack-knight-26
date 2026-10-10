@@ -26,8 +26,9 @@ export type CameraFraming =
 export type NightVisionMode = "OFF" | "AUTO" | "ON";
 
 export interface CameraStatus {
-  live: boolean;
-  gate: CameraGate;
+  enabled?: boolean; // false = the user switched the camera off (older daemons omit it)
+  live: boolean; // false = daemon is serving a synthetic fallback feed
+  gate: CameraGate; // OPEN = Presage session running
   framing: CameraFraming;
   sdk_code: string | null;
   sdk_hint: string | null;
@@ -38,6 +39,7 @@ export interface CameraStatus {
 export interface Telemetry {
   timestamp: string; // ISO 8601
   state: SleepState;
+  mode?: "SIMULATED" | "REALTIME";
   vitals: Vitals;
   motion_index: number;
   camera?: CameraStatus; // additive; older daemons omit it
