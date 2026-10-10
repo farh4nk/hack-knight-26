@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useTelemetry } from "@/context/TelemetryProvider";
 import { APP_NAME } from "@/lib/config";
 import { useDaemonUrl } from "@/lib/useDaemonUrl";
+import { InstallButton } from "./InstallButton";
 
 export function Header() {
   const pathname = usePathname();
@@ -75,6 +76,8 @@ export function Header() {
             {!mock && daemon ? <span className="hidden text-ink-faint sm:inline"> · {daemon.replace(/^https?:\/\//, "")}</span> : null}
           </span>
         </div>
+
+        <InstallButton />
       </div>
     </header>
   );

@@ -6,6 +6,7 @@ import { useVoiceProfile } from "@/hooks/useVoiceProfile";
 import { useAutoSoothe } from "@/hooks/useAutoSoothe";
 import { VoiceRecorder } from "./VoiceRecorder";
 import { SootheControls } from "./SootheControls";
+import { TwoWayAudio } from "./TwoWayAudio";
 import { analyticsUrl } from "@/lib/config";
 
 
@@ -63,6 +64,8 @@ export function AudioPanel() {
           </button>
         </div>
       )}
+
+      <TwoWayAudio sootheEngine={engine} />
 
       {!voiceId ? (
         <VoiceRecorder onComplete={onboard} loading={loading} />
