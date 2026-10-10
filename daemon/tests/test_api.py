@@ -212,3 +212,55 @@ def test_camera_debug_slot(monkeypatch):
         assert cam._latest_debug_jpeg == b""
     finally:
         cam.stop()
+
+
+def test_preview_is_encoded_slowly_without_viewers_and_fast_with_one(monkeypatch):
+    """JPEG encoding is CPU the Presage bridge needs: ~1/s idle, stream_fps while watched."""
+    import time
+
+    import numpy as np
+
+    from cradleecho.camera import Camera
+
+    class FakeCap:
+        def isOpened(self):
+            return True
+
+        def read(self):
+            time.sleep(1 / 60)
+            return True, np.zeros((480, 640, 3), dtype=np.uint8)
+
+        def set(self, prop, val):
+            pass
+
+        def release(self):
+            pass
+
+    monkeypatch.setattr("cv2.VideoCapture", lambda x: FakeCap())
+    cam = Camera(device="0")
+    cam.start()
+    try:
+        time.sleep(0.3)
+        idle_start = cam.get_frame_seq()
+        time.sleep(1.0)
+        idle = cam.get_frame_seq() - idle_start
+        assert idle <= 3, idle
+
+        cam.acquire_viewer()
+        time.sleep(0.3)
+        watched_start = cam.get_frame_seq()
+        time.sleep(1.0)
+        watched = cam.get_frame_seq() - watched_start
+        assert watched >= 10, watched
+        cam.release_viewer()
+
+        # Target as fast as the camera: every frame must be encoded, not every other one.
+        monkeypatch.setattr("cradleecho.camera.settings.stream_fps", 30.0)
+        cam.acquire_viewer()
+        time.sleep(0.3)
+        start = cam.get_frame_seq()
+        time.sleep(1.0)
+        full = cam.get_frame_seq() - start
+        assert full >= 22, full
+    finally:
+        cam.stop()

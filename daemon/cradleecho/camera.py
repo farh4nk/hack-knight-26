@@ -16,6 +16,7 @@ os.environ.setdefault(
 import cv2  # noqa: E402
 import numpy as np  # noqa: E402
 
+from cradleecho import diag
 from cradleecho.config import settings
 
 logger = logging.getLogger(__name__)
@@ -117,6 +118,8 @@ class Camera:
         self._paused_jpeg: bytes = encoded.tobytes() if success else b""
         self._latest_jpeg: bytes = self._paused_jpeg if not self._enabled.is_set() else self._fallback_jpeg
         self._debug_viewers: int = 0
+        self._viewers: int = 0
+        self._last_encode = 0.0
         self._latest_debug_jpeg: bytes = b""
         self._frame_seq: int = 0  # bumped whenever a new JPEG is published
 
@@ -124,6 +127,13 @@ class Camera:
         self._raw_cond = threading.Condition()
         self._latest_raw: np.ndarray | None = None
         self._raw_seq: int = 0
+
+        # Listeners (face gate, Presage push) run on their own thread, newest frame only, so
+        # their cost never slows capture, motion or the MJPEG stream.
+        self._listener_cond = threading.Condition()
+        self._listener_frame: np.ndarray | None = None
+        self._listener_seq: int = 0
+        self._listener_thread: threading.Thread | None = None
 
     def get_night_vision_mode(self) -> str:
         """Return current night vision mode (OFF, AUTO, ON)."""
@@ -189,6 +199,28 @@ class Camera:
         self._stop_event.clear()
         self._thread = threading.Thread(target=self._capture_loop, name="CameraCaptureThread", daemon=True)
         self._thread.start()
+        self._listener_thread = threading.Thread(
+            target=self._listener_loop, name="CameraListenerThread", daemon=True
+        )
+        self._listener_thread.start()
+
+    def _listener_loop(self) -> None:
+        seen = 0
+        while not self._stop_event.is_set():
+            with self._listener_cond:
+                self._listener_cond.wait_for(
+                    lambda: self._listener_seq != seen or self._stop_event.is_set(), timeout=0.5
+                )
+                if self._listener_seq == seen or self._listener_frame is None:
+                    continue
+                seen, frame = self._listener_seq, self._listener_frame
+            t0 = time.perf_counter()
+            for listener in list(self._frame_listeners):
+                try:
+                    listener(frame)
+                except Exception:
+                    logger.exception("Frame listener failed")
+            diag.timed("listeners", time.perf_counter() - t0)
 
     def stop(self) -> None:
         """Stop capture thread and release resources."""
@@ -196,13 +228,28 @@ class Camera:
         if self._thread is not None:
             self._thread.join(timeout=2.0)
             self._thread = None
+        with self._listener_cond:
+            self._listener_cond.notify_all()
+        if self._listener_thread is not None:
+            self._listener_thread.join(timeout=2.0)
+            self._listener_thread = None
 
     def add_frame_listener(self, listener: Callable[[np.ndarray], None]) -> None:
-        """Register a callback receiving each live BGR frame on the capture thread.
+        """Register a callback receiving live BGR frames on the listener thread.
 
-        Listeners must return quickly and never block.
+        Slow listeners skip frames (newest wins); they never slow capture.
         """
         self._frame_listeners.append(listener)
+
+    def acquire_viewer(self) -> None:
+        """A browser is watching the MJPEG stream; encode frames for it."""
+        with self._lock:
+            self._viewers += 1
+            self._last_encode = 0.0  # first frame for the new viewer is not delayed
+
+    def release_viewer(self) -> None:
+        with self._lock:
+            self._viewers = max(0, self._viewers - 1)
 
     def acquire_debug(self) -> None:
         with self._lock:
@@ -250,6 +297,8 @@ class Camera:
         """
         while not self._stop_event.is_set() and not stop.is_set():
             ret, frame = cap.read()
+            if ret:
+                diag.count("cam_delivered")
             if not ret and isinstance(self._device, str) and os.path.exists(self._device):
                 # Rewind video file to frame 0 so recorded clips loop indefinitely
                 cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
@@ -353,12 +402,11 @@ class Camera:
                     seen_seq, frame = self._next_frame(seen_seq)
 
                 if frame is not None:
-                    # Frame listeners (Presage, etc.) ALWAYS get the raw frame
-                    for listener in self._frame_listeners:
-                        try:
-                            listener(frame)
-                        except Exception:
-                            logger.exception("Frame listener failed")
+                    diag.count("loop_frames")
+                    with self._listener_cond:
+                        self._listener_frame = frame
+                        self._listener_seq += 1
+                        self._listener_cond.notify_all()
 
                     # Frame-diff motion on a half-size image: ~4x cheaper than full-size, and an
                     # 11px blur at half-size matches the old 21px blur at full-size.
@@ -413,17 +461,32 @@ class Camera:
                         overlay_fn = self._overlay_fn
                         debug_count = self._debug_viewers
 
-                    # Prepare frame for encoding: apply night vision enhancement if active
+                    # JPEG encoding is the biggest cost here on a Pi, and Presage needs the CPU:
+                    # encode at stream_fps for viewers, and about once a second when nobody is
+                    # watching (keeps the latest-frame snapshot fresh).
+                    with self._lock:
+                        watching = self._viewers + debug_count > 0
+                    now_enc = time.monotonic()
+                    interval = 1.0 / settings.stream_fps if watching else 1.0
+                    ret_enc, enc_jpeg = False, None
                     encode_frame = frame
-                    if enhancing and brightness_for_enhance is not None:
-                        encode_frame = enhance_low_light(frame, brightness_for_enhance)
-
-                    # Always encode the (potentially enhanced) frame
-                    ret_enc, enc_jpeg = cv2.imencode(".jpg", encode_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
+                    # Half a camera frame of slack: a frame arriving a hair early must not be
+                    # skipped, or a 30 fps camera with a 30 fps target would only encode 15.
+                    slack = 0.5 / settings.camera_fps
+                    if now_enc - self._last_encode >= interval - slack:
+                        self._last_encode = now_enc
+                        t_enc = time.perf_counter()
+                        # Night-vision enhancement applies to the preview only; the Presage and
+                        # face-gate listeners get the raw frame.
+                        encode_frame = frame
+                        if enhancing and brightness_for_enhance is not None:
+                            encode_frame = enhance_low_light(frame, brightness_for_enhance)
+                        ret_enc, enc_jpeg = cv2.imencode(".jpg", encode_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
+                        diag.timed("encode", time.perf_counter() - t_enc)
 
                     # Conditionally encode debug frame
                     debug_bytes = b""
-                    if overlay_fn is not None and debug_count > 0:
+                    if ret_enc and overlay_fn is not None and debug_count > 0:
                         view = encode_frame.copy()
                         try:
                             overlay_fn(view)
@@ -434,11 +497,14 @@ class Camera:
                         if ret_debug:
                             debug_bytes = enc_debug.tobytes()
 
-                    with self._lock:
-                        if ret_enc:
+                    if ret_enc:
+                        with self._lock:
                             self._latest_jpeg = enc_jpeg.tobytes()
-                        self._latest_debug_jpeg = debug_bytes
-                        self._frame_seq += 1
+                            self._latest_debug_jpeg = debug_bytes
+                            self._frame_seq += 1
+                    elif debug_count == 0 and self._latest_debug_jpeg:
+                        with self._lock:
+                            self._latest_debug_jpeg = b""
                     # No fixed sleep: _next_frame() blocks until the camera has a new frame.
                 else:
                     # Fallback synthetic frame

@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
+from cradleecho import diag
 from cradleecho.camera import Camera
 from cradleecho.classifier import SleepStateClassifier
 from cradleecho.config import settings
@@ -153,6 +154,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         logger.info("Starting CradleEcho daemon services...")
+        diag.start()
         cam.start()
         await mock_src.start()
         await presage_src.start()
@@ -305,11 +307,14 @@ def create_app(
     @app.get("/video_feed")
     async def video_feed(request: Request, limit: int | None = None):
         async def mjpeg_generator() -> AsyncGenerator[bytes, None]:
+            cam.acquire_viewer()
             try:
                 async for part in _stream_new_frames(request, cam, cam.get_latest_frame_jpeg, limit):
                     yield part
             except (asyncio.CancelledError, GeneratorExit):
                 return
+            finally:
+                cam.release_viewer()
 
         return StreamingResponse(
             mjpeg_generator(),
