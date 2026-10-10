@@ -21,8 +21,10 @@ from cradleecho.config import settings
 logger = logging.getLogger(__name__)
 
 
-def create_synthetic_frame(text: str = "NO CAMERA") -> np.ndarray:
-    """Create a 640x480 synthetic BGR fallback image."""
+def create_synthetic_frame(
+    text: str = "NO CAMERA", subtitle: str = "SIGNAL UNSTABLE / CHECK CONNECTION"
+) -> np.ndarray:
+    """Create a 640x480 synthetic BGR placeholder image."""
     img = np.zeros((480, 640, 3), dtype=np.uint8)
     # Slate gray background with subtle vignette
     img[:] = (38, 32, 28)
@@ -30,44 +32,20 @@ def create_synthetic_frame(text: str = "NO CAMERA") -> np.ndarray:
     # Frame border
     cv2.rectangle(img, (20, 20), (620, 460), (70, 60, 55), 2)
 
-    # Title & status text
-    cv2.putText(
-        img,
-        "CRADLEECHO MONITOR",
-        (160, 200),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.9,
-        (220, 220, 220),
-        2,
-        cv2.LINE_AA,
-    )
-    cv2.putText(
-        img,
-        text,
-        (220, 250),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.8,
-        (80, 140, 255),
-        2,
-        cv2.LINE_AA,
-    )
-    cv2.putText(
-        img,
-        "SIGNAL UNSTABLE / CHECK CONNECTION",
-        (130, 300),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.55,
-        (160, 160, 160),
-        1,
-        cv2.LINE_AA,
-    )
+    def centered(msg: str, y: int, scale: float, color: tuple[int, int, int], thickness: int) -> None:
+        (w, _), _ = cv2.getTextSize(msg, cv2.FONT_HERSHEY_SIMPLEX, scale, thickness)
+        cv2.putText(img, msg, ((640 - w) // 2, y), cv2.FONT_HERSHEY_SIMPLEX, scale, color, thickness, cv2.LINE_AA)
+
+    centered("CRADLEECHO MONITOR", 200, 0.9, (220, 220, 220), 2)
+    centered(text, 250, 0.8, (80, 140, 255), 2)
+    centered(subtitle, 300, 0.55, (160, 160, 160), 1)
     return img
 
 
 class Camera:
     """Single shared background camera capture thread."""
 
-    def __init__(self, device: int | str | None = None) -> None:
+    def __init__(self, device: int | str | None = None, enabled: bool | None = None) -> None:
         if device is None:
             raw_dev = settings.camera
             if raw_dev.isdigit():
@@ -86,11 +64,20 @@ class Camera:
         self._thread: threading.Thread | None = None
         self._overlay_fn: Callable[[np.ndarray], None] | None = None
 
+        # User-controlled on/off. Off releases the device and serves a placeholder; the capture
+        # loop waits on this event while paused.
+        self._enabled = threading.Event()
+        if settings.camera_enabled if enabled is None else enabled:
+            self._enabled.set()
+
         # Pre-generate synthetic fallback frame
         fallback_mat = create_synthetic_frame("NO CAMERA")
         success, encoded = cv2.imencode(".jpg", fallback_mat, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
         self._fallback_jpeg: bytes = encoded.tobytes() if success else b""
-        self._latest_jpeg: bytes = self._fallback_jpeg
+        paused_mat = create_synthetic_frame("CAMERA OFF", "Turn the camera on to resume monitoring")
+        success, encoded = cv2.imencode(".jpg", paused_mat, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+        self._paused_jpeg: bytes = encoded.tobytes() if success else b""
+        self._latest_jpeg: bytes = self._paused_jpeg if not self._enabled.is_set() else self._fallback_jpeg
         self._debug_viewers: int = 0
         self._latest_debug_jpeg: bytes = b""
         self._frame_seq: int = 0  # bumped whenever a new JPEG is published
@@ -105,6 +92,16 @@ class Camera:
         with self._lock:
             self._overlay_fn = fn
 
+
+    def set_enabled(self, enabled: bool) -> None:
+        """Turn the camera on or off. Off stops capture and releases the device."""
+        if enabled:
+            self._enabled.set()
+        else:
+            self._enabled.clear()
+
+    def is_enabled(self) -> bool:
+        return self._enabled.is_set()
 
     def start(self) -> None:
         """Start the background capture thread."""
@@ -165,14 +162,14 @@ class Camera:
         with self._lock:
             return self._is_live
 
-    def _reader_loop(self, cap: "cv2.VideoCapture") -> None:
+    def _reader_loop(self, cap: "cv2.VideoCapture", stop: threading.Event) -> None:
         """Drain the camera as fast as it delivers, keeping only the newest frame.
 
         Decoupling the read from the processing below is what keeps latency flat: if processing
         is briefly slower than the camera, frames are dropped instead of queueing up inside
         OpenCV/ffmpeg (which showed up as multi-second delay).
         """
-        while not self._stop_event.is_set():
+        while not self._stop_event.is_set() and not stop.is_set():
             ret, frame = cap.read()
             if not ret and isinstance(self._device, str) and os.path.exists(self._device):
                 # Rewind video file to frame 0 so recorded clips loop indefinitely
@@ -196,37 +193,82 @@ class Camera:
                 return seen_seq, None
             return self._raw_seq, self._latest_raw
 
+    def _open_device(self):
+        """Open the camera and start its reader thread: (cap, reader, reader_stop), or Nones."""
+        logger.info("Opening camera device: %s", self._device)
+        cap = cv2.VideoCapture(self._device)
+        if cap is None or not cap.isOpened():
+            logger.warning("Could not open camera device %s; using synthetic feed", self._device)
+            return None, None, None
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        cap.set(cv2.CAP_PROP_FPS, settings.camera_fps)
+        # Do NOT set CAP_PROP_BUFFERSIZE=1: with a single V4L2 buffer the driver cannot
+        # capture while a frame is being read, which halves the rate (30 -> 15 fps on a
+        # Pi 4 + UVC camera) and Presage then rejects the stream (< 25 fps). The reader
+        # thread already drops stale frames, so extra buffers don't add latency.
+        reader_stop = threading.Event()
+        reader = threading.Thread(
+            target=self._reader_loop, args=(cap, reader_stop), name="CameraReaderThread", daemon=True
+        )
+        reader.start()
+        return cap, reader, reader_stop
+
+    def _close_device(self, cap, reader, reader_stop) -> None:
+        if reader_stop is not None:
+            reader_stop.set()
+        if reader is not None:
+            reader.join(timeout=2.0)
+        # Releasing while the reader is stuck in cap.read() (stalled network source) is unsafe.
+        if cap is not None and (reader is None or not reader.is_alive()):
+            cap.release()
+        with self._raw_cond:
+            self._latest_raw = None
+
     def _capture_loop(self) -> None:
-        cap: cv2.VideoCapture | None = None
-        reader: threading.Thread | None = None
+        cap = reader = reader_stop = None
         prev_gray: np.ndarray | None = None
         seen_seq = 0
+        open_failed = False
+        paused_published = False
 
         # If dummy or none specified, keep serving fallback frame without trying hardware
         use_hardware = self._device not in ("none", "dummy", "synthetic", -1)
 
         try:
-            if use_hardware:
-                logger.info("Opening camera device: %s", self._device)
-                cap = cv2.VideoCapture(self._device)
-                if cap is not None and cap.isOpened():
-                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-                    cap.set(cv2.CAP_PROP_FPS, settings.camera_fps)
-                    # Do NOT set CAP_PROP_BUFFERSIZE=1: with a single V4L2 buffer the driver cannot
-                    # capture while a frame is being read, which halves the rate (30 -> 15 fps on a
-                    # Pi 4 + UVC camera) and Presage then rejects the stream (< 25 fps). The reader
-                    # thread already drops stale frames, so extra buffers don't add latency.
-                    reader = threading.Thread(
-                        target=self._reader_loop, args=(cap,), name="CameraReaderThread", daemon=True
-                    )
-                    reader.start()
-                else:
-                    logger.warning("Could not open camera device %s; using synthetic feed", self._device)
-            else:
+            if not use_hardware:
                 logger.info("Using synthetic fallback feed for camera")
 
             while not self._stop_event.is_set():
+                if not self._enabled.is_set():
+                    # Turned off: release the device (the camera light goes out and Presage gets
+                    # no frames) and serve a placeholder until it is turned back on.
+                    if cap is not None or reader is not None:
+                        self._close_device(cap, reader, reader_stop)
+                        cap = reader = reader_stop = None
+                        prev_gray = None
+                        logger.info("Camera turned off")
+                    open_failed = False
+                    if not paused_published:
+                        paused_published = True
+                        with self._lock:
+                            self._latest_jpeg = self._paused_jpeg
+                            self._latest_debug_jpeg = b""
+                            self._motion_index = 0.0
+                            self._mean_brightness = None
+                            self._is_live = False
+                            self._frame_seq += 1
+                    self._enabled.wait(timeout=0.25)
+                    continue
+                if paused_published:
+                    paused_published = False
+                    logger.info("Camera turned on")
+                if use_hardware and cap is None and not open_failed:
+                    cap, reader, reader_stop = self._open_device()
+                    open_failed = cap is None
+                    with self._raw_cond:
+                        seen_seq = self._raw_seq
+
                 frame = None
                 if reader is not None:
                     seen_seq, frame = self._next_frame(seen_seq)
@@ -308,9 +350,5 @@ class Camera:
                 self._motion_index = 0.0
         finally:
             self._stop_event.set()  # release the reader thread if we exited on an error
-            if reader is not None:
-                reader.join(timeout=2.0)
-            # Releasing while the reader is stuck in cap.read() (stalled network source) is unsafe.
-            if cap is not None and (reader is None or not reader.is_alive()):
-                cap.release()
+            self._close_device(cap, reader, reader_stop)
             logger.info("Camera capture loop stopped")

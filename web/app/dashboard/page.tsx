@@ -4,7 +4,8 @@ import { useEffect, useState, useCallback } from "react";
 import { Disclaimer } from "@/components/Disclaimer";
 import { GeminiNightQA } from "@/components/GeminiNightQA";
 import { Header } from "@/components/Header";
-import { analyticsUrl, BABY_NAME } from "@/lib/config";
+import { babyTitle, getBabyName, useBabyName } from "@/lib/babyName";
+import { analyticsUrl } from "@/lib/config";
 
 interface NightlySummaryResponse {
   baby_name: string;
@@ -65,6 +66,7 @@ function formatTime12(timeStr: string): string {
 }
 
 export default function DashboardPage() {
+  const title = babyTitle(useBabyName() ?? "");
   const [bedtime, setBedtime] = useState("20:00");
   const [wakeTime, setWakeTime] = useState("07:00");
   const [summary, setSummary] = useState<NightlySummaryResponse | null>(null);
@@ -78,7 +80,7 @@ export default function DashboardPage() {
     setError(null);
     try {
       const [sumRes, timeRes, trendRes] = await Promise.all([
-        fetch(`${analyticsUrl()}/api/nightly-summary?baby_name=${BABY_NAME}&bedtime=${bTime}&wake_time=${wTime}`),
+        fetch(`${analyticsUrl()}/api/nightly-summary?baby_name=${encodeURIComponent(babyTitle(getBabyName()))}&bedtime=${bTime}&wake_time=${wTime}`),
         fetch(`${analyticsUrl()}/api/sleep-timeline?bedtime=${bTime}&wake_time=${wTime}&limit=120`),
         fetch(`${analyticsUrl()}/api/vitals-trend?bedtime=${bTime}&wake_time=${wTime}&limit=60`),
       ]);
@@ -118,7 +120,7 @@ export default function DashboardPage() {
       <section className="mt-4">
         <span className="text-xs font-semibold uppercase tracking-wider text-tone">Night Intelligence</span>
         <h1 className="mt-1 font-display text-4xl text-ink [font-variation-settings:'SOFT'_100,'opsz'_144] sm:text-5xl">
-          {BABY_NAME}’s Sleep Report
+          {title}’s Sleep Report
         </h1>
         <p className="mt-2 text-sm text-ink-dim">
           Tiger Data time-series vitals scoped to your scheduled bedtime window & Gemini 3.5 sleep analytics
@@ -136,7 +138,7 @@ export default function DashboardPage() {
               </span>
             </div>
             <p className="mt-1 text-xs text-ink-dim">
-              Set Maya’s scheduled crib hours. Telemetry queries, hypnogram, and Gemini summaries scope to this exact window.
+              Set {title}’s scheduled crib hours. Telemetry queries, hypnogram, and Gemini summaries scope to this exact window.
             </p>
           </div>
 
@@ -450,10 +452,10 @@ export default function DashboardPage() {
               )) || (
                 <>
                   <li className="font-display text-lg text-ink [font-variation-settings:'SOFT'_100]">
-                    🌙 Maya slept 11.0 hours uninterrupted with 100% sleep efficiency during her scheduled bedtime.
+                    🌙 {title} slept 11.0 hours uninterrupted with 100% sleep efficiency during the scheduled bedtime.
                   </li>
                   <li className="font-display text-lg text-ink [font-variation-settings:'SOFT'_100]">
-                    🕊️ Auto-soothe intervened twice during restlessness, gently settling her back to sleep within 40 seconds.
+                    🕊️ Auto-soothe intervened twice during restlessness, gently settling them back to sleep within 40 seconds.
                   </li>
                   <li className="font-display text-lg text-ink [font-variation-settings:'SOFT'_100]">
                     ✨ Vital signals remained stable with average breathing rate at 24.3 BrPM.

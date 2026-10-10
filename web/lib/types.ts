@@ -24,6 +24,7 @@ export type CameraFraming =
   | "UNKNOWN";
 
 export interface CameraStatus {
+  enabled?: boolean; // false = the user switched the camera off (older daemons omit it)
   live: boolean; // false = daemon is serving a synthetic fallback feed
   gate: CameraGate; // OPEN = Presage session running
   framing: CameraFraming;

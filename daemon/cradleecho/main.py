@@ -29,6 +29,10 @@ class SimulateRestlessRequest(BaseModel):
     seconds: float = Field(default=15.0, ge=1.0, le=300.0)
 
 
+class CameraToggleRequest(BaseModel):
+    enabled: bool
+
+
 class PlaySootheRequest(BaseModel):
     audio_base64: str | None = None
     phrase: str | None = None
@@ -128,12 +132,19 @@ def create_app(
         )
     cam.set_overlay(_composite_overlay)
 
+    def sync_presage_pause() -> None:
+        """Presage (the paid SDK session) may only run when the camera is on AND the real sensor
+        source is selected. Otherwise it would keep consuming camera frames, and credits, while
+        the app shows simulated data or the user has switched the camera off."""
+        presage_src.set_paused(not cam.is_enabled() or isinstance(hub.source, MockVitalsSource))
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         logger.info("Starting CradleEcho daemon services...")
         cam.start()
         await mock_src.start()
         await presage_src.start()
+        sync_presage_pause()
         await hub.start()
         yield
         logger.info("Shutting down CradleEcho daemon services...")
@@ -195,12 +206,27 @@ def create_app(
         else:
             return JSONResponse({"error": "Invalid source. Use 'mock' or 'real'"}, status_code=400)
 
+        sync_presage_pause()
         await hub.step()
         return await get_source()
 
     @app.get("/api/state")
     async def get_state():
         return hub.get_latest_payload()
+
+    @app.get("/api/camera")
+    async def get_camera():
+        return {"enabled": cam.is_enabled(), "live": cam.is_live()}
+
+    @app.post("/api/camera")
+    async def set_camera(req: CameraToggleRequest):
+        """Turn the camera on or off. Off releases the device and ends the Presage session
+        (no Presage credits are used while it is off)."""
+        cam.set_enabled(req.enabled)
+        sync_presage_pause()
+        logger.info("Camera %s via API", "enabled" if req.enabled else "disabled")
+        await hub.step()  # push the new state to viewers immediately
+        return {"enabled": cam.is_enabled(), "live": cam.is_live()}
 
     @app.post("/api/simulate-restless")
     async def simulate_restless(req: SimulateRestlessRequest | None = None):

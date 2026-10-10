@@ -85,6 +85,7 @@ class PresageVitalsSource:
         self._gate = None
         self._gate_active = True
         self._gate_event: asyncio.Event | None = None
+        self._paused = False
 
     async def start(self) -> None:
         if self._running:
@@ -128,6 +129,27 @@ class PresageVitalsSource:
             self._gate_event.clear()
 
     @property
+    def paused(self) -> bool:
+        return self._paused
+
+    def set_paused(self, paused: bool) -> None:
+        """Pause or resume Presage regardless of the face gate (the camera on/off switch).
+
+        Pausing ends the SDK session, so no Presage credits are used while paused. Call from the
+        event loop thread. On resume the face gate re-arms as soon as frames show a face again.
+        """
+        self._paused = paused
+        if paused:
+            self._gate_active = False
+            if self._gate is not None:
+                self._gate.reset()
+            self._handle_gate_inactive()
+        elif self._gate is None:
+            self._gate_active = True
+            if self._gate_event:
+                self._gate_event.set()
+
+    @property
     def gate_enabled(self) -> bool:
         return self._gate is not None
 
@@ -154,7 +176,7 @@ class PresageVitalsSource:
         Frames are dropped when throttled or when the previous write has not
         been flushed to the pipe yet.
         """
-        if self._frame_size is None or self._loop is None or not self._running:
+        if self._frame_size is None or self._loop is None or not self._running or self._paused:
             return
 
         if self._gate is not None:
