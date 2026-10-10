@@ -1,4 +1,4 @@
-# Running CradleEcho on the Raspberry Pi
+# Running Cribby on the Raspberry Pi
 
 The Pi runs everything: camera capture, Presage, sleep-state logic, and the web UI. Your laptop is
 only a browser: open `http://<pi-host>:3000` to watch the feed and see notifications.
