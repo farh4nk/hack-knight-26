@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Fraunces, Instrument_Sans } from "next/font/google";
+import { AuthProvider } from "@/context/AuthProvider";
 import { NightShell } from "@/components/NightShell";
 import { TelemetryProvider } from "@/context/TelemetryProvider";
 import { PwaRegister } from "@/components/PwaRegister";
@@ -43,9 +44,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <link rel="preload" as="script" href="/sw.js" />
       </head>
       <body className="flex min-h-full flex-col">
-        <TelemetryProvider>
-          <NightShell>{children}</NightShell>
-        </TelemetryProvider>
+        <AuthProvider>
+          <TelemetryProvider>
+            <NightShell>{children}</NightShell>
+          </TelemetryProvider>
+        </AuthProvider>
         <PwaRegister />
       </body>
     </html>

@@ -6,6 +6,7 @@ import { GeminiNightQA } from "@/components/GeminiNightQA";
 import { Header } from "@/components/Header";
 import { babyTitle, getBabyName, useBabyName } from "@/lib/babyName";
 import { analyticsUrl } from "@/lib/config";
+import { useAuth } from "@/context/AuthProvider";
 
 interface NightlySummaryResponse {
   baby_name: string;
@@ -67,8 +68,9 @@ function formatTime12(timeStr: string): string {
 
 export default function DashboardPage() {
   const title = babyTitle(useBabyName() ?? "");
-  const [bedtime, setBedtime] = useState("20:00");
-  const [wakeTime, setWakeTime] = useState("07:00");
+  const { baby, updateBaby } = useAuth();
+  const [bedtime, setBedtime] = useState(baby?.bedtime || "20:00");
+  const [wakeTime, setWakeTime] = useState(baby?.wake_time || "07:00");
   const [summary, setSummary] = useState<NightlySummaryResponse | null>(null);
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   const [trend, setTrend] = useState<TrendEntry[]>([]);
@@ -105,12 +107,18 @@ export default function DashboardPage() {
     let cancelled = false;
     Promise.resolve().then(async () => {
       if (cancelled) return;
-      await loadDashboardData("20:00", "07:00");
+      if (baby?.bedtime && baby?.wake_time) {
+        setBedtime(baby.bedtime);
+        setWakeTime(baby.wake_time);
+        await loadDashboardData(baby.bedtime, baby.wake_time);
+      } else {
+        await loadDashboardData("20:00", "07:00");
+      }
     });
     return () => {
       cancelled = true;
     };
-  }, [loadDashboardData]);
+  }, [baby?.bedtime, baby?.wake_time, loadDashboardData]);
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-5 sm:px-8">
@@ -206,7 +214,12 @@ export default function DashboardPage() {
           <div className="flex items-center">
             <button
               type="button"
-              onClick={() => loadDashboardData(bedtime, wakeTime)}
+              onClick={() => {
+                loadDashboardData(bedtime, wakeTime);
+                if (baby) {
+                  updateBaby({ bedtime, wake_time: wakeTime });
+                }
+              }}
               disabled={loading}
               className="w-full rounded-2xl bg-tone px-4 py-3 text-sm font-semibold text-[#0a0b15] transition hover:opacity-90 disabled:opacity-50"
             >

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { MAX_NAME_LENGTH, cleanName, setBabyName } from "@/lib/babyName";
+import { useAuth } from "@/context/AuthProvider";
 
 interface BabyNameFormProps {
   initial?: string;
@@ -12,11 +13,15 @@ interface BabyNameFormProps {
 }
 
 export function BabyNameForm({ initial = "", autoFocus, onDone, submitLabel = "Save" }: BabyNameFormProps) {
+  const { user, updateBaby } = useAuth();
   const [value, setValue] = useState(initial);
   const clean = cleanName(value);
 
-  const save = () => {
+  const save = async () => {
     setBabyName(clean);
+    if (user) {
+      await updateBaby({ name: clean });
+    }
     onDone?.();
   };
 

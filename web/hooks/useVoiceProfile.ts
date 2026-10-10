@@ -8,9 +8,11 @@ import {
   saveVoiceId,
   SoothingSnippet,
 } from "@/lib/audio/elevenlabs";
+import { useAuth } from "@/context/AuthProvider";
 
-/** Holds the cloned voice_id (persisted in localStorage) and pre-rendered soothing snippets. */
+/** Holds the cloned voice_id (persisted in localStorage and Tiger Data) and pre-rendered soothing snippets. */
 export function useVoiceProfile() {
+  const { baby, updateBaby } = useAuth();
   const [voiceId, setVoiceId] = useState<string | null>(null);
   const [snippets, setSnippets] = useState<SoothingSnippet[]>([]);
   const [loading, setLoading] = useState(false);
@@ -29,7 +31,7 @@ export function useVoiceProfile() {
   }, []);
 
   useEffect(() => {
-    const id = loadVoiceId();
+    const id = loadVoiceId() || baby?.voice_id || null;
     if (!id) return;
     let cancelled = false;
     Promise.resolve().then(() => {
@@ -41,7 +43,7 @@ export function useVoiceProfile() {
     return () => {
       cancelled = true;
     };
-  }, [render]);
+  }, [render, baby?.voice_id]);
 
   const onboard = useCallback(
     async (sample: Blob) => {
@@ -51,6 +53,9 @@ export function useVoiceProfile() {
         const id = await cloneVoice(sample);
         saveVoiceId(id);
         setVoiceId(id);
+        if (baby) {
+          void updateBaby({ voice_id: id });
+        }
         await render(id);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Voice onboarding failed");
@@ -58,15 +63,18 @@ export function useVoiceProfile() {
         setLoading(false);
       }
     },
-    [render]
+    [render, baby, updateBaby]
   );
 
   const reset = useCallback(() => {
     saveVoiceId(null);
     setVoiceId(null);
+    if (baby) {
+      void updateBaby({ voice_id: null });
+    }
     setSnippets([]);
     setError(null);
-  }, []);
+  }, [baby, updateBaby]);
 
   return { voiceId, snippets, loading, error, onboard, reset };
 }
