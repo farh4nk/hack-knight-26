@@ -1,41 +1,47 @@
 # Running Cribby on the Raspberry Pi
 
-The Pi runs everything: camera capture, Presage, sleep-state logic, and the web UI. Your laptop is
-only a browser: open `http://<pi-host>:3000` to watch the feed and see notifications.
+The Pi runs everything: camera capture, Presage, sleep-state logic, the web UI, **and Caddy for HTTPS with a local CA**. Your laptop/phone is only a browser: open `https://<pi-host>.local/` to watch the feed and see notifications (after a one-time pairing step at `http://<pi-host>.local/pair`).
 
 ```
 Logitech webcam ──USB──▶ Pi 4: [daemon :8000] ──speaker──▶ Crib audio
-                               [analytics :8001]
-                               [web UI :3000]
-                                     ▲
-                                     └── laptop/phone browser (same network)
+                                [analytics :8001]
+                                [web UI :3000]
+                                [caddy :80/:443] ◀─── laptop/phone browser (same network)
+                                      │
+                                      └── http://<pi-host>.local/pair  →  download CA cert, install trust
+                                      └── https://<pi-host>.local/     →  secure monitor (mic, PWA, SW)
 ```
 
 ## Requirements
+
 - Raspberry Pi 4, **64-bit** Raspberry Pi OS (Lite is fine), 4 GB RAM recommended (2 GB is tight).
 - Docker + the compose plugin: `curl -fsSL https://get.docker.com | sh`, then `sudo usermod -aG docker $USER` and log back in.
 - `sudo apt install v4l-utils` (lets `pi_check.sh` find the camera).
 - SSH access from your laptop (`ssh-copy-id pi@<pi-host>`), a `PRESAGE_API_KEY` in `daemon/.env`, database keys in `.env`, and an `ELEVENLABS_API_KEY` in `web/.env.local`.
 
 ## Deploy (laptop → Pi)
+
 The Pi builds nothing. Compiling the Presage bridge or `next build` on a Pi 4 is slow and can run out of memory.
 
 ```bash
 # on your laptop, from the repo root (Docker running)
 deploy/pi/build_and_ship.sh pi@raspberrypi.local --with-env
 ```
-This builds both images for `linux/arm64`, loads them on the Pi, and copies `compose.yaml`, `pi_check.sh`
-and (with `--with-env`) your Presage key (`daemon.env`) and ElevenLabs key (`web.env`). The daemon image is ~2.2 GB, so the first transfer takes a few minutes.
+
+This builds all images for `linux/arm64` (including `caddy:2`), loads them on the Pi, and copies `compose.yaml`, `Caddyfile`, `pair/`, `pi_check.sh` and (with `--with-env`) your Presage key (`daemon.env`), analytics keys (`analytics.env`), and ElevenLabs key (`web.env`). The daemon image is ~2.2 GB, so the first transfer takes a few minutes.
 On an Apple Silicon Mac the arm64 build is native. On an x86 machine run once:
 `docker run --privileged --rm tonistiigi/binfmt --install arm64`.
 
 ## Start (on the Pi)
+
 ```bash
 cd ~/cradleecho
-./pi_check.sh --write     # checks everything, finds the Logitech, writes .env
+./pi_check.sh --write     # checks everything, finds the Logitech, writes .env (including SITE_HOST)
 docker compose up -d
 ```
-Then open `http://<pi-host>:3000` from your laptop (`pi_check.sh` prints the exact addresses).
+
+Then open `https://<pi-host>.local/` from your laptop/phone (`pi_check.sh` prints the exact addresses).
+**First visit:** open `http://<pi-host>.local/pair`, download `ca.crt`, install & trust it per the on-screen instructions, then reload the HTTPS URL.
 Stop with `docker compose down`; logs with `docker compose logs -f daemon`.
 
 ## Tuning on a Pi 4 (measured on a Pi 4 + Logitech Brio 101)
@@ -60,14 +66,24 @@ The defaults in `compose.yaml` come from real measurements; override any of them
 **A Pi 4 is at its limit for Presage.** Measured with `CRADLEECHO_DIAG=1`: the bridge's mediapipe threads use ~2.5 of 4 cores and only 20-25 fps reach it (below the 25 it needs), even at 320x240, with the `performance` CPU governor and no browser open. The camera itself delivers a steady 30 fps and the face gate costs ~6 ms/frame. With Presage on a Mac reading the Pi's stream, 29 fps reached the bridge with no `kFrameRateTooLow`. See [presage-compute.md](presage-compute.md) for the table and the Pi-as-camera setup (`CRADLEECHO_SOURCE=mock CRADLEECHO_STREAM_FPS=30`).
 
 ## Verified vs not yet verified
-Verified (on an arm64 machine, no Pi hardware):
-- Both images build for `linux/arm64`, including the C++ Presage bridge against the arm64 SDK package.
-- The bridge binary starts with no missing libraries; the full stack runs and the UI works when opened
-  by IP address from another device (it talks to the daemon on the host that served the page).
-- `pi_check.sh` picks the right camera node from realistic `v4l2-ctl` output.
 
-**Not verified: needs a real Pi + Logitech.** Real Presage vitals on the Pi, Pi 4 CPU load
-(Presage + face gate + JPEG encoding), `/dev/dri` passthrough, and the Logitech's actual node and formats.
+Verified (on an arm64 machine, no Pi hardware):
+- All images build for `linux/arm64`, including the C++ Presage bridge against the arm64 SDK package.
+- The bridge binary starts with no missing libraries; the full stack runs and the UI works when opened by IP address from another device (it talks to the daemon on the host that served the page).
+- `pi_check.sh` picks the right camera node from realistic `v4l2-ctl` output.
+- Caddy starts with `tls internal`, serves the CA at `/ca.crt`, and proxies `/daemon/*` → daemon:8000 (flush_interval -1 for MJPEG/WebSockets), `/analytics/*` → analytics:8001, `/` → web:3000.
+
+**Not verified: needs a real Pi + Logitech.** Real Presage vitals on the Pi, Pi 4 CPU load (Presage + face gate + JPEG encoding), `/dev/dri` passthrough, and the Logitech's actual node and formats.
+
+## Pairing a device (one-time per browser/device)
+
+1. Open `http://<pi-host>.local/pair` on the phone/laptop.
+2. Tap **Download certificate (ca.crt)**.
+3. Follow the platform-specific steps shown on the page to install the certificate and enable full trust.
+4. Open `https://<pi-host>.local/` — the lock icon should show a valid connection.
+5. Microphone, service workers, PWA install, and desktop notifications now work.
+
+The certificate is generated by Caddy's local CA (`tls internal`), never leaves your LAN, and only authorizes this device to trust *this* Cribby instance.
 
 ## Troubleshooting
 - **Every request to `hack-knight.local` takes ~5 s (page load 5 s, live data 10 s):** your phone hotspot is
@@ -81,15 +97,15 @@ Verified (on an arm64 machine, no Pi hardware):
 - **"Camera offline" / synthetic feed:** run `./pi_check.sh`. A Pi has many `/dev/video*` nodes and the
   Logitech may not be `video0`. `--write` stores the right one in `.env`.
 - **Daemon unhealthy / mock vitals:** `docker compose logs daemon`. `/healthz` shows `"source":"mock"` when the API key is missing.
-- **Voice recording blocked:** browsers only allow the microphone on `localhost` or HTTPS, so recording a voice sample
-  over plain `http://<pi-host>:3000` fails. Options: record the sample on the Pi itself, put the Pi behind
-  HTTPS (e.g. Tailscale Serve), or for a demo only, allow the origin in `chrome://flags/#unsafely-treat-insecure-origin-as-secure`.
-- **Can't reach the Pi from the laptop:** same network? Some venue Wi-Fi isolates devices from each other;
-  use a phone hotspot or a direct Ethernet cable.
+- **Microphone / PWA / notifications blocked:** Browsers only allow these on `localhost` or HTTPS. The Pi now runs Caddy with a local CA:
+  1. Open `http://<pi-host>.local/pair` on the device.
+  2. Download and trust the `ca.crt` (steps shown on the page).
+  3. Reload `https://<pi-host>.local/`.
+  *Demo-only fallback:* if you cannot pair, enable `chrome://flags/#unsafely-treat-insecure-origin-as-secure` for `http://<pi-host>:3000` (Chrome/Edge only, not Safari/Firefox).
+- **Can't reach the Pi from the laptop:** Same network? Some venue Wi-Fi isolates devices from each other; use a phone hotspot or a direct Ethernet cable.
+- **Port 80 or 443 already in use:** `pi_check.sh --write` warns but does not fail. Stop the conflicting service or change Caddy's ports in `compose.yaml`.
 
 ## Open decisions
-- **Where does soothing audio play?** The current auto-soothe engine plays audio in the browser tab, so with the
-  Pi as the brain the sound would come out of the laptop, not the nursery. Playing from the Pi (a speaker on the Pi)
-  means moving that logic into the daemon.
-- **Notifications** to the laptop are shown while the page is open. Notifications with the tab closed need a push
-  service (e.g. ntfy) called from the daemon.
+
+- **Where does soothing audio play?** The current auto-soothe engine plays audio in the browser tab, so with the Pi as the brain the sound would come out of the laptop, not the nursery. Playing from the Pi (a speaker on the Pi) means moving that logic into the daemon.
+- **Notifications** to the laptop are shown while the page is open. Notifications with the tab closed need a push service (e.g. ntfy) called from the daemon.

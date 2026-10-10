@@ -1,0 +1,54 @@
+{
+	# Caddy's local CA root lives at /data/caddy/pki/authorities/local/root.crt
+	# It is served at http://<host>/ca.crt for device pairing.
+	admin off
+}
+
+# SITE_HOST defaults to raspberrypi.local. SITE_EXTRA is one optional extra name or IP that also gets
+# a certificate (e.g. the Pi's LAN IP); it defaults to localhost so the address list is never empty.
+
+# HTTPS site (port 443) - serves the web UI and proxies daemon/analytics
+https://{$SITE_HOST}, https://{$SITE_EXTRA:localhost} {
+	tls internal
+
+	# Daemon: video feed (MJPEG), websockets, API
+	handle_path /daemon/* {
+		reverse_proxy daemon:8000 {
+			flush_interval -1
+		}
+	}
+
+	# Analytics: Tiger Data, Gemini
+	handle_path /analytics/* {
+		reverse_proxy analytics:8001
+	}
+
+	# Everything else -> Next.js web UI
+	handle {
+		reverse_proxy web:3000
+	}
+}
+
+# HTTP site (port 80) - serves CA cert and pairing page, redirects rest to HTTPS
+http://{$SITE_HOST} {
+	# Serve the local CA root certificate for device pairing
+	@ca_crt path /ca.crt
+	handle @ca_crt {
+		rewrite * /root.crt
+		root * /data/caddy/pki/authorities/local
+		header Content-Type "application/x-x509-ca-cert"
+		header Content-Disposition "attachment; filename=cradleecho-ca.crt"
+		file_server
+	}
+
+	# Static pairing page
+	handle_path /pair* {
+		root * /srv/pair
+		file_server
+	}
+
+	# Redirect all other HTTP traffic to HTTPS
+	handle {
+		redir https://{$SITE_HOST}{uri} permanent
+	}
+}

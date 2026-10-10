@@ -95,7 +95,7 @@ export default function DashboardPage() {
         setTrend(trendData.trend || []);
       }
     } catch {
-      setError("Unable to connect to Tiger Data analytics API on :8001");
+      setError("Unable to connect to Tiger Data analytics API");
     } finally {
       setLoading(false);
     }

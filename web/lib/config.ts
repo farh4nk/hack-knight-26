@@ -2,6 +2,7 @@
 export const APP_NAME = "Cribby";
 
 const DAEMON_PORT = 8000;
+const ANALYTICS_PORT = 8001;
 
 /**
  * Base URL of the daemon (video, telemetry, API). Browser-only values: call this from effects and
@@ -10,22 +11,37 @@ const DAEMON_PORT = 8000;
  * Unset NEXT_PUBLIC_DAEMON_URL means "the host that served this page, on port 8000". That is what
  * makes the UI work from any device when the Pi serves both the UI and the daemon (a hard-coded
  * localhost would point a laptop at itself).
+ *
+ * When served over HTTPS via Caddy (same origin), the daemon is reachable at /daemon and analytics
+ * at /analytics — no port needed. Plain-HTTP behavior stays exactly as is (host:8000 / host:8001).
  */
 export function daemonUrl(): string {
   const fromEnv = process.env.NEXT_PUBLIC_DAEMON_URL;
   if (fromEnv) return fromEnv.replace(/\/$/, "");
   if (typeof window !== "undefined") {
+    const isHttps = window.location.protocol === "https:";
+    if (isHttps) {
+      // Same-origin through Caddy: /daemon proxies to daemon:8000
+      return `${window.location.origin}/daemon`;
+    }
     return `${window.location.protocol}//${window.location.hostname}:${DAEMON_PORT}`;
   }
   return `http://localhost:${DAEMON_PORT}`;
 }
 
-/** Analytics API (nightly summary, soothe-event log). Same host-relative rule as the daemon, port 8001. */
+/** Analytics API (nightly summary, soothe-event log). Same host-relative rule as the daemon. */
 export function analyticsUrl(): string {
   const fromEnv = process.env.NEXT_PUBLIC_ANALYTICS_URL;
   if (fromEnv) return fromEnv.replace(/\/$/, "");
-  if (typeof window !== "undefined") return `${window.location.protocol}//${window.location.hostname}:8001`;
-  return "http://localhost:8001";
+  if (typeof window !== "undefined") {
+    const isHttps = window.location.protocol === "https:";
+    if (isHttps) {
+      // Same-origin through Caddy: /analytics proxies to analytics:8001
+      return `${window.location.origin}/analytics`;
+    }
+    return `${window.location.protocol}//${window.location.hostname}:${ANALYTICS_PORT}`;
+  }
+  return `http://localhost:${ANALYTICS_PORT}`;
 }
 
 /**

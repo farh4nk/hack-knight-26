@@ -54,18 +54,25 @@ if want web; then
   docker buildx build --platform linux/arm64 --load -t cradleecho-web:latest web
 fi
 
+if [[ -z "$ONLY" ]]; then
+  echo "==> Pulling Caddy (linux/arm64)"
+  docker pull --platform linux/arm64 caddy:2
+  IMAGES+=(caddy:2)
+fi
+
 echo "==> Shipping images to $TARGET (compressed; a few minutes the first time)"
 docker save "${IMAGES[@]}" | gzip | ssh "$TARGET" 'gunzip | docker load'
 
-echo "==> Copying compose file and check script"
+echo "==> Copying compose file, Caddyfile, pairing page, and check script"
 ssh "$TARGET" "mkdir -p $REMOTE_DIR"
-scp -q deploy/pi/compose.yaml deploy/pi/pi_check.sh "$TARGET:$REMOTE_DIR/"
+scp -q deploy/pi/compose.yaml deploy/pi/Caddyfile deploy/pi/pi_check.sh "$TARGET:$REMOTE_DIR/"
+scp -rq deploy/pi/pair "$TARGET:$REMOTE_DIR/"
 ssh "$TARGET" "chmod +x $REMOTE_DIR/pi_check.sh"
 
 if [[ $WITH_ENV -eq 1 ]]; then
   [[ -f daemon/.env ]] || { echo "daemon/.env not found" >&2; exit 1; }
   scp -q daemon/.env "$TARGET:$REMOTE_DIR/daemon.env"
-  
+
   # Analytics env: TIGER_DATA_CONNECTION_STRING & GEMINI_API_KEY
   BACKEND_ENV=""
   for f in .env backend/.env; do [[ -f "$f" ]] && BACKEND_ENV="$f" && break; done
@@ -94,7 +101,7 @@ cat <<DONE
 
 Done. On the Pi:
   cd ~/cradleecho
-  ./pi_check.sh --write     # finds the Logitech, checks prerequisites, writes .env
+  ./pi_check.sh --write     # finds the Logitech, checks prerequisites, writes .env (includes SITE_HOST)
   docker compose up -d
-Then open http://<pi-host>:3000 from your laptop.
+Then open https://<pi-host>.local/ from your laptop (pair first at http://<pi-host>.local/pair).
 DONE
