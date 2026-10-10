@@ -1,4 +1,4 @@
-const CACHE_NAME = "cradleecho-v1";
+const CACHE_NAME = "cribby-v1";
 const PRECACHE_URLS = ["/offline", "/icon-192.png", "/icon-512.png", "/icon-maskable-512.png", "/apple-touch-icon.png"];
 
 function shouldCacheRequest(request) {

@@ -160,12 +160,6 @@ def create_app(
         await presage_src.start()
         sync_presage_pause()
         await hub.start()
-        # Start listen hub if enabled
-        if lh.enabled:
-            await lh.subscribe()  # dummy subscribe to trigger recorder start
-            # immediately unsubscribe to keep it running but with 0 subscribers
-            # Actually, we just need to ensure the recorder can start on first real subscriber
-            pass
         yield
         logger.info("Shutting down Cribby daemon services...")
         await hub.stop()
