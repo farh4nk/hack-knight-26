@@ -174,6 +174,10 @@ class Camera:
         """
         while not self._stop_event.is_set():
             ret, frame = cap.read()
+            if not ret and isinstance(self._device, str) and os.path.exists(self._device):
+                # Rewind video file to frame 0 so recorded clips loop indefinitely
+                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                ret, frame = cap.read()
             ok = bool(ret) and frame is not None
             with self._raw_cond:
                 self._latest_raw = frame if ok else None
