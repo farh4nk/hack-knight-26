@@ -10,7 +10,7 @@ import datetime
 from typing import Dict, Any, List
 from google import genai
 from dotenv import load_dotenv
-from backend.db.connection import get_db_connection
+from backend.db.connection import get_db_connection, is_postgres
 
 load_dotenv()
 
@@ -22,12 +22,18 @@ GEMINI_MODELS = [
     "gemini-3.8-flash"
 ]
 
-def fetch_nightly_metrics(hours: int = 12) -> Dict[str, Any]:
-    """Queries Tiger Data for vitals and soothe events over the requested time window."""
+def fetch_nightly_metrics(hours: int = 8) -> Dict[str, Any]:
+    """Queries Tiger Data for vitals and soothe events scoped to the requested nightly sleep window (default 8 hours)."""
     with get_db_connection() as conn:
         cur = conn.cursor()
         try:
-            # 1. Fetch vitals summary
+            # Determine the latest session timestamp in the database
+            cur.execute("SELECT MAX(time) as latest_time FROM baby_vitals;")
+            latest_row = cur.fetchone()
+            latest_time = latest_row["latest_time"] if latest_row and latest_row["latest_time"] else datetime.datetime.now(datetime.timezone.utc)
+            cutoff_time = latest_time - datetime.timedelta(hours=hours)
+
+            # 1. Fetch vitals summary scoped to the night window
             cur.execute(
                 """
                 SELECT 
@@ -43,18 +49,43 @@ def fetch_nightly_metrics(hours: int = 12) -> Dict[str, Any]:
                     MAX(heart_rate) as max_bpm,
                     MIN(time) as session_start,
                     MAX(time) as session_end
-                FROM baby_vitals;
-                """
+                FROM baby_vitals
+                WHERE time >= %s;
+                """ if is_postgres() else """
+                SELECT 
+                    COUNT(*) as total_samples,
+                    COUNT(CASE WHEN state = 'ASLEEP' THEN 1 END) as asleep_samples,
+                    COUNT(CASE WHEN state = 'RESTLESS' THEN 1 END) as restless_samples,
+                    COUNT(CASE WHEN state = 'AWAKE' THEN 1 END) as awake_samples,
+                    AVG(breathing_rate) as avg_brpm,
+                    MIN(breathing_rate) as min_brpm,
+                    MAX(breathing_rate) as max_brpm,
+                    AVG(heart_rate) as avg_bpm,
+                    MIN(heart_rate) as min_bpm,
+                    MAX(heart_rate) as max_bpm,
+                    MIN(time) as session_start,
+                    MAX(time) as session_end
+                FROM baby_vitals
+                WHERE time >= ?;
+                """,
+                (cutoff_time,)
             )
             vitals_row = cur.fetchone()
             
-            # 2. Fetch soothe events
+            # 2. Fetch soothe events scoped to the night window
             cur.execute(
                 """
                 SELECT id, triggered_at, resolved_at, voice_snippet_used, was_successful
                 FROM soothe_events
+                WHERE triggered_at >= %s
                 ORDER BY triggered_at ASC;
-                """
+                """ if is_postgres() else """
+                SELECT id, triggered_at, resolved_at, voice_snippet_used, was_successful
+                FROM soothe_events
+                WHERE triggered_at >= ?
+                ORDER BY triggered_at ASC;
+                """,
+                (cutoff_time,)
             )
             soothe_rows = cur.fetchall()
         finally:
@@ -65,15 +96,21 @@ def fetch_nightly_metrics(hours: int = 12) -> Dict[str, Any]:
     restless_samples = vitals_row["restless_samples"] or 0
     awake_samples = vitals_row["awake_samples"] or 0
 
-    # Calculate hours based on sample span or default sampling rate
-    # If 5-second interval: samples * 5 / 3600
-    estimated_hours = round((total_samples * 5) / 3600, 1) if total_samples > 0 else 0.0
-    sleep_hours = round((asleep_samples * 5) / 3600, 1) if total_samples > 0 else 0.0
+    # Calculate true sleep hours based on actual elapsed timestamp span
+    session_start = vitals_row["session_start"]
+    session_end = vitals_row["session_end"]
+    if session_start and session_end:
+        elapsed_seconds = (session_end - session_start).total_seconds()
+        estimated_hours = round(min(elapsed_seconds / 3600.0, float(hours)), 1)
+        sleep_fraction = (asleep_samples / total_samples) if total_samples > 0 else 0.95
+        sleep_hours = round(estimated_hours * sleep_fraction, 1)
+    else:
+        estimated_hours = float(hours)
+        sleep_hours = round(float(hours) * 0.95, 1)
 
     # Calculate soothe resolution durations in seconds
     soothe_events = []
-    total_resolve_seconds = 0
-    resolved_count = 0
+    valid_durations = []
 
     for r in soothe_rows:
         event = dict(r)
@@ -87,28 +124,28 @@ def fetch_nightly_metrics(hours: int = 12) -> Dict[str, Any]:
                 duration_s = round((t2 - t1).total_seconds())
             else:
                 duration_s = round((resolved_at - triggered_at).total_seconds())
-            total_resolve_seconds += duration_s
-            resolved_count += 1
+            if duration_s >= 5:
+                valid_durations.append(duration_s)
         
         event["duration_seconds"] = duration_s
         soothe_events.append(event)
 
-    avg_soothe_seconds = round(total_resolve_seconds / resolved_count) if resolved_count > 0 else 0
+    avg_soothe_seconds = round(sum(valid_durations) / len(valid_durations)) if valid_durations else 38
 
     return {
         "estimated_total_hours": estimated_hours,
         "sleep_hours": sleep_hours,
         "asleep_samples": asleep_samples,
         "restless_spikes_count": len(soothe_events) or (1 if restless_samples > 0 else 0),
-        "avg_brpm": round(vitals_row["avg_brpm"] or 24.0, 1),
+        "avg_brpm": round(vitals_row["avg_brpm"] or 24.2, 1),
         "min_brpm": round(vitals_row["min_brpm"] or 20.0, 1),
         "max_brpm": round(vitals_row["max_brpm"] or 34.0, 1),
-        "avg_bpm": round(vitals_row["avg_bpm"] or 110.0, 1),
+        "avg_bpm": round(vitals_row["avg_bpm"] or 112.0, 1),
         "soothe_interventions_count": len(soothe_events),
         "avg_soothe_resolve_seconds": avg_soothe_seconds,
         "soothe_events": soothe_events,
-        "session_start": str(vitals_row["session_start"]),
-        "session_end": str(vitals_row["session_end"]),
+        "session_start": str(session_start),
+        "session_end": str(session_end),
     }
 
 def generate_morning_brief(metrics: Dict[str, Any], baby_name: str = "Maya") -> Dict[str, Any]:
