@@ -57,7 +57,7 @@ The defaults in `compose.yaml` come from real measurements; override any of them
   `v4l2-ctl -d /dev/video0 --set-ctrl=exposure_dynamic_framerate=0` (resets when the camera is replugged; `pi_check.sh` warns if it is on).
 - Never set `CAP_PROP_BUFFERSIZE=1` on a V4L2 camera: with one buffer the driver can't capture while a frame is read, which halved the rate from 30 to 15 fps here. A regression test covers it.
 
-Expect the Presage bridge to use about two CPU cores on a Pi 4 (the Pi stayed at ~58 C and unthrottled).
+**A Pi 4 is at its limit for Presage.** Measured with `CRADLEECHO_DIAG=1`: the bridge's mediapipe threads use ~2.5 of 4 cores and only 20-25 fps reach it (below the 25 it needs), even at 320x240, with the `performance` CPU governor and no browser open. The camera itself delivers a steady 30 fps and the face gate costs ~6 ms/frame. With Presage on a Mac reading the Pi's stream, 29 fps reached the bridge with no `kFrameRateTooLow`. See [presage-compute.md](presage-compute.md) for the table and the Pi-as-camera setup (`CRADLEECHO_SOURCE=mock CRADLEECHO_STREAM_FPS=30`).
 
 ## Verified vs not yet verified
 Verified (on an arm64 machine, no Pi hardware):

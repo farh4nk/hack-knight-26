@@ -114,6 +114,14 @@ Valid states: `ASLEEP | DROWSY | RESTLESS | AWAKE | SIGNAL_UNSTABLE`
 - `sdk_hint` (string | null): human-readable Presage fix instruction, or `null`
 - `enabled` (bool, optional): `false` when the user switched the camera off (`POST /api/camera`); vitals are zeroed, `state` is `SIGNAL_UNSTABLE`, and consumers should not record the reading
 
+## Project status (updated 2026-10-10)
+
+The task checkboxes below are the original plan and are not maintained. Current state:
+- Built and merged: web UI, daemon (capture, face gate, classifier, telemetry, camera switch), voice clone + auto-soothe, ingestion worker and Gemini recap code, Pi deployment.
+- **Presage on a Pi 4 is not reliable**: the bridge gets 20-25 fps (needs 25). Run Presage on a laptop that reads the Pi's stream (29 fps measured). See `docs/presage-compute.md`.
+- Never run end to end on real hardware: database ingestion, the Gemini recap against live data, auto-soothe with a real voice clone on the Pi speaker.
+- Open PRs: #20 (Presage reliability), #18 (two-way audio, night vision, PWA; conflicts), #19 (LAN HTTPS, stacked on #18).
+
 ## Team responsibilities
 
 ### Dev 1: Computer vision & edge daemon (Python / FastAPI)
