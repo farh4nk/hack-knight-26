@@ -80,6 +80,8 @@ class Camera:
         self._paused_jpeg: bytes = encoded.tobytes() if success else b""
         self._latest_jpeg: bytes = self._paused_jpeg if not self._enabled.is_set() else self._fallback_jpeg
         self._debug_viewers: int = 0
+        self._viewers: int = 0
+        self._last_encode = 0.0
         self._latest_debug_jpeg: bytes = b""
         self._frame_seq: int = 0  # bumped whenever a new JPEG is published
 
@@ -159,6 +161,16 @@ class Camera:
         Slow listeners skip frames (newest wins); they never slow capture.
         """
         self._frame_listeners.append(listener)
+
+    def acquire_viewer(self) -> None:
+        """A browser is watching the MJPEG stream; encode frames for it."""
+        with self._lock:
+            self._viewers += 1
+            self._last_encode = 0.0  # first frame for the new viewer is not delayed
+
+    def release_viewer(self) -> None:
+        with self._lock:
+            self._viewers = max(0, self._viewers - 1)
 
     def acquire_debug(self) -> None:
         with self._lock:
@@ -347,12 +359,23 @@ class Camera:
                         overlay_fn = self._overlay_fn
                         debug_count = self._debug_viewers
 
-                    # Always encode the clean frame
-                    ret_enc, enc_jpeg = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
+                    # JPEG encoding is the biggest cost here on a Pi, and Presage needs the CPU:
+                    # encode at stream_fps for viewers, and about once a second when nobody is
+                    # watching (keeps the latest-frame snapshot fresh).
+                    with self._lock:
+                        watching = self._viewers + debug_count > 0
+                    now_enc = time.monotonic()
+                    interval = 1.0 / settings.stream_fps if watching else 1.0
+                    ret_enc, enc_jpeg = False, None
+                    if now_enc - self._last_encode >= interval:
+                        self._last_encode = now_enc
+                        t_enc = time.perf_counter()
+                        ret_enc, enc_jpeg = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
+                        diag.timed("encode", time.perf_counter() - t_enc)
 
                     # Conditionally encode debug frame
                     debug_bytes = b""
-                    if overlay_fn is not None and debug_count > 0:
+                    if ret_enc and overlay_fn is not None and debug_count > 0:
                         view = frame.copy()
                         try:
                             overlay_fn(view)
@@ -363,11 +386,14 @@ class Camera:
                         if ret_debug:
                             debug_bytes = enc_debug.tobytes()
 
-                    with self._lock:
-                        if ret_enc:
+                    if ret_enc:
+                        with self._lock:
                             self._latest_jpeg = enc_jpeg.tobytes()
-                        self._latest_debug_jpeg = debug_bytes
-                        self._frame_seq += 1
+                            self._latest_debug_jpeg = debug_bytes
+                            self._frame_seq += 1
+                    elif debug_count == 0 and self._latest_debug_jpeg:
+                        with self._lock:
+                            self._latest_debug_jpeg = b""
                     # No fixed sleep: _next_frame() blocks until the camera has a new frame.
                 else:
                     # Fallback synthetic frame

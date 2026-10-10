@@ -196,7 +196,10 @@ class PresageVitalsSource:
             return
 
         now = time.monotonic()
-        if self._write_pending or now - self._last_push < self._min_frame_interval:
+        if self._write_pending:
+            diag.count("drop_write_pending")
+            return
+        if now - self._last_push < self._min_frame_interval:
             return
         self._last_push = now
         w, h = self._frame_size
@@ -215,6 +218,7 @@ class PresageVitalsSource:
                 return
             # Bridge is not keeping up: drop rather than queue stale frames.
             if proc.stdin.transport.get_write_buffer_size() > len(data):
+                diag.count("drop_pipe_full")
                 return
             proc.stdin.write(data)
             diag.count("frames_to_bridge")

@@ -286,11 +286,14 @@ def create_app(
     @app.get("/video_feed")
     async def video_feed(request: Request, limit: int | None = None):
         async def mjpeg_generator() -> AsyncGenerator[bytes, None]:
+            cam.acquire_viewer()
             try:
                 async for part in _stream_new_frames(request, cam, cam.get_latest_frame_jpeg, limit):
                     yield part
             except (asyncio.CancelledError, GeneratorExit):
                 return
+            finally:
+                cam.release_viewer()
 
         return StreamingResponse(
             mjpeg_generator(),
