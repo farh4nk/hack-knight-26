@@ -1,32 +1,34 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Fraunces, Instrument_Sans } from "next/font/google";
+import { NightShell } from "@/components/NightShell";
 import { TelemetryProvider } from "@/context/TelemetryProvider";
 import { APP_NAME } from "@/lib/config";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Display serif with the SOFT axis turned up: warm and rounded, like a nursery sign.
+const fraunces = Fraunces({
+  variable: "--font-fraunces",
   subsets: ["latin"],
+  axes: ["SOFT", "opsz"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const instrument = Instrument_Sans({
+  variable: "--font-instrument",
   subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
   title: APP_NAME,
-  description: "Sleep-aware baby monitor",
+  description: "A sleep-aware baby monitor",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col">
-        <TelemetryProvider>{children}</TelemetryProvider>
+    <html lang="en" className={`${fraunces.variable} ${instrument.variable} h-full`}>
+      <body className="flex min-h-full flex-col">
+        <TelemetryProvider>
+          <NightShell>{children}</NightShell>
+        </TelemetryProvider>
       </body>
     </html>
   );

@@ -42,46 +42,53 @@ export function MorningRecapCard() {
   }, []);
 
   return (
-    <div className="rounded-2xl bg-slate-900 p-5 ring-1 ring-white/10">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-slate-400">Nightly Recap</span>
-        <span className="rounded bg-violet-950 px-2 py-0.5 text-xs text-violet-400">Gemini 1.5 + Tiger Data</span>
+    <section className="mt-16 border-t border-line pt-10">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="font-display text-3xl text-ink [font-variation-settings:'SOFT'_100,'opsz'_144]">Last night</h2>
+        <span className="text-xs text-ink-faint">Summary by Gemini · data on Tiger Data</span>
       </div>
 
       {loading && (
-        <div className="mt-4 flex items-center justify-center gap-2 py-3 text-xs text-slate-400">
-          <span className="h-4 w-4 animate-spin rounded-full border-2 border-violet-400 border-t-transparent" />
-          Analyzing night vitals…
+        <div role="status" className="mt-6 flex items-center gap-2.5 text-sm text-ink-dim">
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-tone border-t-transparent" aria-hidden />
+          Reading through the night…
         </div>
       )}
 
       {error && !loading && (
-        <div className="mt-3 text-xs text-slate-500">
-          <p>{error}</p>
-          <button
-            type="button"
-            onClick={fetchSummary}
-            className="mt-2 text-violet-400 underline hover:text-violet-300"
-          >
-            Retry
+        <p className="mt-6 text-sm text-ink-faint">
+          {error}{" "}
+          <button type="button" onClick={fetchSummary} className="underline underline-offset-4 hover:text-ink">
+            Try again
           </button>
-        </div>
+        </p>
       )}
 
       {data && !loading && (
-        <div className="mt-3 space-y-2">
-          {data.summary_bullets.map((bullet, idx) => (
-            <div key={idx} className="rounded-xl bg-slate-800/60 p-2.5 text-xs text-slate-300 leading-relaxed">
-              {bullet}
+        <div className="mt-6 grid gap-10 lg:grid-cols-[minmax(0,1fr)_16rem]">
+          <ul className="flex flex-col gap-4">
+            {data.summary_bullets.map((bullet, idx) => (
+              <li key={idx} className="font-display text-xl leading-snug text-ink [font-variation-settings:'SOFT'_100]">
+                {bullet}
+              </li>
+            ))}
+          </ul>
+          <dl className="grid grid-cols-3 gap-4 text-sm lg:grid-cols-1">
+            <div>
+              <dt className="text-ink-faint">Slept</dt>
+              <dd className="font-display text-2xl text-ink tabular-nums">{data.metrics.sleep_hours} h</dd>
             </div>
-          ))}
-          <div className="mt-2 flex justify-between border-t border-white/5 pt-2 text-[10px] text-slate-500">
-            <span>Sleep: {data.metrics.sleep_hours}h</span>
-            <span>Avg BrPM: {data.metrics.avg_brpm}</span>
-            <span>Interventions: {data.metrics.soothe_interventions_count}</span>
-          </div>
+            <div>
+              <dt className="text-ink-faint">Avg breathing</dt>
+              <dd className="font-display text-2xl text-ink tabular-nums">{data.metrics.avg_brpm}</dd>
+            </div>
+            <div>
+              <dt className="text-ink-faint">Soothed</dt>
+              <dd className="font-display text-2xl text-ink tabular-nums">{data.metrics.soothe_interventions_count}×</dd>
+            </div>
+          </dl>
         </div>
       )}
-    </div>
+    </section>
   );
 }
