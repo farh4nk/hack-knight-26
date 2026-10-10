@@ -367,7 +367,10 @@ class Camera:
                     now_enc = time.monotonic()
                     interval = 1.0 / settings.stream_fps if watching else 1.0
                     ret_enc, enc_jpeg = False, None
-                    if now_enc - self._last_encode >= interval:
+                    # Half a camera frame of slack: a frame arriving a hair early must not be
+                    # skipped, or a 30 fps camera with a 30 fps target would only encode 15.
+                    slack = 0.5 / settings.camera_fps
+                    if now_enc - self._last_encode >= interval - slack:
                         self._last_encode = now_enc
                         t_enc = time.perf_counter()
                         ret_enc, enc_jpeg = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])

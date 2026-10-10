@@ -252,5 +252,14 @@ def test_preview_is_encoded_slowly_without_viewers_and_fast_with_one(monkeypatch
         watched = cam.get_frame_seq() - watched_start
         assert watched >= 10, watched
         cam.release_viewer()
+
+        # Target as fast as the camera: every frame must be encoded, not every other one.
+        monkeypatch.setattr("cradleecho.camera.settings.stream_fps", 30.0)
+        cam.acquire_viewer()
+        time.sleep(0.3)
+        start = cam.get_frame_seq()
+        time.sleep(1.0)
+        full = cam.get_frame_seq() - start
+        assert full >= 22, full
     finally:
         cam.stop()
