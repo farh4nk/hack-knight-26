@@ -37,7 +37,7 @@ def create_synthetic_frame(
         (w, _), _ = cv2.getTextSize(msg, cv2.FONT_HERSHEY_SIMPLEX, scale, thickness)
         cv2.putText(img, msg, ((640 - w) // 2, y), cv2.FONT_HERSHEY_SIMPLEX, scale, color, thickness, cv2.LINE_AA)
 
-    centered("CRADLEECHO MONITOR", 200, 0.9, (220, 220, 220), 2)
+    centered("CRIBBY MONITOR", 200, 0.9, (220, 220, 220), 2)
     centered(text, 250, 0.8, (80, 140, 255), 2)
     centered(subtitle, 300, 0.55, (160, 160, 160), 1)
     return img
