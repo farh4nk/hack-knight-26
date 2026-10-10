@@ -13,10 +13,10 @@ class MockVitalsSource:
     def __init__(self, seed: Optional[int] = None) -> None:
         self._rng = random.Random(seed)
         self._mode: Optional[str] = None
-        self._brpm: float = 24.0
+        self._brpm: float = 26.0
         self._bpm: float = 120.0
         self._confidence: float = 0.90
-        self._motion_index: float = 0.10
+        self._motion_index: float = 0.04
         self._running: bool = False
 
     async def start(self) -> None:
@@ -39,13 +39,13 @@ class MockVitalsSource:
             target_brpm = 35.0
             target_bpm = 140.0
             target_conf = 0.88
-            target_motion = 0.72
+            target_motion = 0.32
         else:
             # Normal infant vitals (asleep / calm)
-            target_brpm = 24.0
+            target_brpm = 26.0
             target_bpm = 120.0
             target_conf = 0.90
-            target_motion = 0.10
+            target_motion = 0.04
 
         # Mean-reverting random walk step
         self._brpm += 0.25 * (target_brpm - self._brpm) + self._rng.uniform(-0.4, 0.4)
@@ -55,13 +55,13 @@ class MockVitalsSource:
 
         # Clamping
         if self._mode == "RESTLESS":
-            self._brpm = max(31.0, min(42.0, self._brpm))
+            self._brpm = max(31.0, min(39.0, self._brpm))
             self._bpm = max(130.0, min(155.0, self._bpm))
-            self._motion_index = max(0.62, min(0.85, self._motion_index))
+            self._motion_index = max(0.24, min(0.40, self._motion_index))
         else:
-            self._brpm = max(20.0, min(28.0, self._brpm))
+            self._brpm = max(23.0, min(32.0, self._brpm))
             self._bpm = max(112.0, min(128.0, self._bpm))
-            self._motion_index = max(0.02, min(0.25, self._motion_index))
+            self._motion_index = max(0.01, min(0.08, self._motion_index))
 
         self._confidence = max(0.50, min(0.99, self._confidence))
 

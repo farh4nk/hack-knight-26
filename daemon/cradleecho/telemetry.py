@@ -50,8 +50,12 @@ def format_telemetry_payload(
     session_running = getattr(source, "session_running", False) if source else False
     sdk_code = getattr(source, "validation_code", None) if session_running else None
     sdk_hint = getattr(source, "raw_validation_hint", None) if session_running else None
+    if sdk_code == "kOk":
+        # "Hold still and record." is Presage's all-clear, not a problem to show the parent.
+        sdk_code = sdk_hint = None
 
     camera_info = {
+        "enabled": getattr(camera, "is_enabled", lambda: True)() if camera else True,
         "live": is_live,
         "gate": gate_state,
         "framing": framing,
@@ -101,6 +105,10 @@ class TelemetryHub:
             camera=self.camera,
             source=self.source,
         )
+
+    def set_source(self, source: VitalsSource) -> None:
+        """Dynamically switches active vitals source between Mock and Real sensor."""
+        self.source = source
 
     def force_unstable(self, seconds: float) -> float:
         self._forced_unstable_until = time.time() + seconds
@@ -161,6 +169,12 @@ class TelemetryHub:
             motion = reading.motion_index
         else:
             motion = self.camera.get_motion_index()
+
+        cam_enabled = getattr(self.camera, "is_enabled", lambda: True)()
+        if not cam_enabled:
+            # Camera off: report no readings (the mock source would otherwise keep inventing them).
+            reading = Reading(brpm=0.0, bpm=0.0, confidence=0.0, motion_index=0.0, timestamp=reading.timestamp)
+            motion = 0.0
 
         forced = time.time() < self._forced_unstable_until
         cam_live = getattr(self.camera, "is_live", lambda: False)()

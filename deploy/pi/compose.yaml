@@ -12,6 +12,20 @@ services:
       - "8000:8000"
     env_file:
       - daemon.env # PRESAGE_API_KEY etc.
+    environment:
+      # Pi 4 tuning, measured on a Pi 4 + Logitech Brio 101:
+      # - The Presage bridge only keeps up with ~14 fps at 640x480 but ~27 fps at 480x360. It
+      #   needs >= 25 fps (kFrameRateTooLow otherwise).
+      # - The face gate wants 1.75 face-heights of empty space below the chin by default, which
+      #   forces a very specific seating position; 1.0 still leaves Presage room to judge the chest.
+      # - Presage's own frame throttle equals the camera rate, so jitter drops frames; 60 disables it.
+      - CRADLEECHO_PRESAGE_CMD=/opt/bridge/bridge --stdin ${PRESAGE_FRAME_SIZE:-480x360}
+      - CRADLEECHO_GATE_CHEST_ROOM=${GATE_CHEST_ROOM:-1.0}
+      - CRADLEECHO_PRESAGE_FPS=${PRESAGE_FPS:-60}
+      # presage = this Pi runs Presage itself; mock = camera-only unit (Presage runs elsewhere).
+      - CRADLEECHO_SOURCE=${CRADLEECHO_SOURCE:-presage}
+      - CRADLEECHO_STREAM_FPS=${CRADLEECHO_STREAM_FPS:-20}
+      - CRADLEECHO_DIAG=${CRADLEECHO_DIAG:-0} # 1 = log pipeline rates every 5 s (DIAG lines)
     devices:
       # Container path stays /dev/video0 (the image's CRADLEECHO_CAMERA). Run pi_check.sh to
       # find which host node is the Logitech; a Pi has many /dev/video* nodes.

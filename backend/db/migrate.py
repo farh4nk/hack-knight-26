@@ -32,7 +32,7 @@ CREATE INDEX IF NOT EXISTS idx_soothe_events_triggered_at ON soothe_events (trig
 def run_migrations():
     """Runs database migrations for Tiger Data / PostgreSQL or fallback SQLite."""
     print("=" * 60)
-    print("CradleEcho Database Migration (Dev 4)")
+    print("Cribby Database Migration (Dev 4)")
     print("=" * 60)
 
     if is_postgres():

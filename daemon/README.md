@@ -1,6 +1,6 @@
-# CradleEcho Edge Daemon
+# Cribby Edge Daemon
 
-Edge daemon for CradleEcho baby monitor. Captures camera frames, computes motion index, consumes biometric vitals (breathing and pulse rates) via Presage SDK or mock source, classifies infant sleep states using a rolling state machine, and broadcasts real-time telemetry over WebSockets.
+Edge daemon for Cribby baby monitor. Captures camera frames, computes motion index, consumes biometric vitals (breathing and pulse rates) via Presage SDK or mock source, classifies infant sleep states using a rolling state machine, and broadcasts real-time telemetry over WebSockets.
 
 ## Requirements
 
@@ -83,6 +83,18 @@ The daemon is configured via environment variables or a `.env` file (parsed usin
 | `CRADLEECHO_PORT` | `8000` | Port to bind the server to. |
 | `CRADLEECHO_CORS_ORIGINS` | `*` | Comma-separated allowed CORS origins. |
 | `CRADLEECHO_MIN_BRIGHTNESS` | `35` | Minimum mean brightness threshold for the lighting gate. |
+| `CRADLEECHO_CAMERA_ENABLED` | `True` | Whether the camera starts on. Switch at runtime with `POST /api/camera {"enabled": false}`: off releases the device and ends the Presage session, so no Presage credits are used. Presage is also paused whenever the simulated source is selected (`POST /api/source {"source": "mock"}`), so credits are only spent with the camera on and the real sensor selected. |
+| `CRADLEECHO_CAMERA_FPS` | `30` | Frame rate requested from the camera (Presage needs >= 25). |
+| `CRADLEECHO_STREAM_FPS` | `20` | Rate of the MJPEG preview while someone watches (about 1/s with no viewer). Presage always gets every camera frame. Set `30` on a camera-only Pi that another machine reads. |
+| `CRADLEECHO_DIAG` | `0` | `1` logs `DIAG ...` lines every 5 s: camera/gate/encode rates, frames into the Presage bridge, drops by reason, vitals rows and the latest SDK validation code. |
+| `CRADLEECHO_ASLEEP_BRPM_MIN` / `_MAX` | `22` / `40` | Breathing range (per minute) that counts as sleep. Outside it the state is AWAKE. |
+| `CRADLEECHO_CALM_MOTION` | `0.10` | Motion below this is calm (can read ASLEEP). |
+| `CRADLEECHO_RESTLESS_MOTION` | `0.20` | Motion at/above this, with in-range breathing, is RESTLESS. |
+| `CRADLEECHO_AWAKE_MOTION` | `0.45` | Motion at/above this is AWAKE. |
+| `CRADLEECHO_ASLEEP_HOLD_S` | `20` | Seconds of calm, in-range breathing before DROWSY becomes ASLEEP. Lower it (e.g. 5) when rehearsing the demo. |
+| `CRADLEECHO_MIN_VALID_BRPM` | `6` | Breathing below this is "no estimate yet" (SIGNAL_UNSTABLE), e.g. Presage warm-up. |
+
+Tune the thresholds against your own camera: run `uv run python scripts/sample_vitals.py --seconds 30 --label still` while sitting still, then again while moving, and compare the motion and breathing numbers with the defaults above.
 | `CRADLEECHO_FACE_GATE` | `True` | Enable the Haar cascade face gate to suspend Presage SDK billing/CPU when nobody is in frame. |
 | `CRADLEECHO_GATE_CHEST_ROOM` | `1.75` | Required chest room under face, as multiple of face height. |
 | `CRADLEECHO_GATE_MIN_FACE` | `0.15` | Minimum face height as fraction of frame height. |
@@ -117,7 +129,8 @@ When `CRADLEECHO_FACE_GATE` is enabled, an OpenCV Haar cascade face detector ana
     "gate": "OPEN",
     "framing": "OK",
     "sdk_code": "kFaceLow",
-    "sdk_hint": "Move up, or tilt the camera down."
+    "sdk_hint": "Move up, or tilt the camera down.",
+    "enabled": true
   }
 }
 ```
@@ -131,6 +144,7 @@ Valid states: `ASLEEP | DROWSY | RESTLESS | AWAKE | SIGNAL_UNSTABLE`
 - `framing` (string): `OK`, `NO_FACE`, `MULTIPLE_FACES`, `TOO_SMALL`, `OFF_CENTER`, `NO_CHEST_ROOM`, or `UNKNOWN`
 - `sdk_code` (string | null): latest Presage validation error code (e.g. `kFaceTooLow`), or `null`
 - `sdk_hint` (string | null): human-readable Presage fix instruction, or `null`
+- `enabled` (bool): `false` when the user switched the camera off; readings are zeroed and `state` is `SIGNAL_UNSTABLE`
 
 ## Raspberry Pi 4
 

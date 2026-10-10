@@ -1,7 +1,8 @@
 "use client";
 
 import { useTelemetry } from "@/context/TelemetryProvider";
-import { copyFor, toneFor } from "@/lib/stateCopy";
+import { useBabyName } from "@/lib/babyName";
+import { copyFor, toneOf } from "@/lib/stateCopy";
 import { useNow } from "@/lib/useNow";
 
 const clock = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -17,8 +18,9 @@ function sinceLabel(since: number, now: number): string {
 export function StateHero() {
   const { latest, connected, stale, stateSince } = useTelemetry();
   const now = useNow();
-  const tone = toneFor(latest?.state, !connected || stale || !latest);
-  const copy = copyFor(tone, latest?.camera);
+  const tone = toneOf(latest, !connected || stale);
+  const name = useBabyName() ?? "";
+  const copy = copyFor(tone, latest?.camera, name);
   const showDuration = tone !== "offline" && stateSince !== null && now > 0;
 
   return (

@@ -1,4 +1,4 @@
-# Running CradleEcho on the Raspberry Pi
+# Running Cribby on the Raspberry Pi
 
 The Pi runs everything: camera capture, Presage, sleep-state logic, and the web UI. Your laptop is
 only a browser: open `http://<pi-host>:3000` to watch the feed and see notifications.
@@ -38,6 +38,27 @@ docker compose up -d
 Then open `http://<pi-host>:3000` from your laptop (`pi_check.sh` prints the exact addresses).
 Stop with `docker compose down`; logs with `docker compose logs -f daemon`.
 
+## Tuning on a Pi 4 (measured on a Pi 4 + Logitech Brio 101)
+The defaults in `compose.yaml` come from real measurements; override any of them in the Pi's `.env`.
+
+| Setting | Default | Why |
+|---|---|---|
+| `PRESAGE_FRAME_SIZE` | `480x360` | The Presage bridge processes ~14 fps at 640x480 but ~27 fps at 480x360. Presage needs >= 25 fps. |
+| `GATE_CHEST_ROOM` | `1.0` | The daemon's face gate wants this many face-heights of empty space below the chin. The code default (1.75) forces a very specific seating position. |
+| `PRESAGE_FPS` | `60` | Presage's own frame throttle equals the camera rate (30), so timing jitter drops frames. 60 disables the throttle. |
+
+**What the logs mean** (`docker compose logs -f daemon`, lines starting `SDK validation:`):
+- `kOk: Hold still and record.` Presage is reading you. Real numbers appear after a short warm-up (breathing ramps up over ~30 s).
+- `kChestNotVisible` / `kFaceNotForward` / `kExcessiveMotion` / `kNoFaceFound`: reposition; these are Presage's own requirements, not bugs.
+- `kFrameRateTooLow`: the stream is under 25 fps. Check `./pi_check.sh` and lighting (below).
+
+**Frame rate.** The daemon must deliver >= 25 fps. Two things can break that:
+- Webcams lower their frame rate in dim light. Turn it off with
+  `v4l2-ctl -d /dev/video0 --set-ctrl=exposure_dynamic_framerate=0` (resets when the camera is replugged; `pi_check.sh` warns if it is on).
+- Never set `CAP_PROP_BUFFERSIZE=1` on a V4L2 camera: with one buffer the driver can't capture while a frame is read, which halved the rate from 30 to 15 fps here. A regression test covers it.
+
+**A Pi 4 is at its limit for Presage.** Measured with `CRADLEECHO_DIAG=1`: the bridge's mediapipe threads use ~2.5 of 4 cores and only 20-25 fps reach it (below the 25 it needs), even at 320x240, with the `performance` CPU governor and no browser open. The camera itself delivers a steady 30 fps and the face gate costs ~6 ms/frame. With Presage on a Mac reading the Pi's stream, 29 fps reached the bridge with no `kFrameRateTooLow`. See [presage-compute.md](presage-compute.md) for the table and the Pi-as-camera setup (`CRADLEECHO_SOURCE=mock CRADLEECHO_STREAM_FPS=30`).
+
 ## Verified vs not yet verified
 Verified (on an arm64 machine, no Pi hardware):
 - Both images build for `linux/arm64`, including the C++ Presage bridge against the arm64 SDK package.
@@ -49,6 +70,14 @@ Verified (on an arm64 machine, no Pi hardware):
 (Presage + face gate + JPEG encoding), `/dev/dri` passthrough, and the Logitech's actual node and formats.
 
 ## Troubleshooting
+- **Every request to `hack-knight.local` takes ~5 s (page load 5 s, live data 10 s):** your phone hotspot is
+  IPv6-only. macOS then never takes an IPv4 address (check `ipconfig getifaddr en0`: empty, or `192.0.0.2` from
+  `ifconfig en0`), and each `.local` lookup waits 5 s for an IPv4 answer that cannot come. Skip the lookup:
+  run `deploy/pi/find_pi.sh` on your laptop. It finds the Pi by IPv6 neighbor discovery and prints instant URLs
+  (`http://[<ipv6>]:3000`, measured 0.14 s vs 5.1 s). `deploy/pi/find_pi.sh --ssh-config hack-knight.local` also makes
+  `ssh pi@hack-knight.local` use the Pi's permanent link-local address (undo with `--remove-ssh-config`). The global
+  address changes if the hotspot reconnects; just re-run the script. A hotspot that gives IPv4 (or Ethernet) avoids this.
+- **Presage keeps saying `kFrameRateTooLow`:** see "Tuning on a Pi 4" above.
 - **"Camera offline" / synthetic feed:** run `./pi_check.sh`. A Pi has many `/dev/video*` nodes and the
   Logitech may not be `video0`. `--write` stores the right one in `.env`.
 - **Daemon unhealthy / mock vitals:** `docker compose logs daemon`. `/healthz` shows `"source":"mock"` when the API key is missing.

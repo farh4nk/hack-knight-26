@@ -1,9 +1,9 @@
-import { BABY_NAME } from "./config";
 import { unstableHint } from "./cameraHint";
-import type { CameraStatus, SleepState } from "./types";
+import type { CameraStatus, SleepState, Telemetry } from "./types";
 
-// What the UI shows. "offline" means we aren't hearing from the monitor at all.
-export type Tone = "asleep" | "drowsy" | "restless" | "awake" | "unstable" | "offline";
+// What the UI shows. "offline" = we aren't hearing from the monitor at all; "paused" = the user
+// switched the camera off.
+export type Tone = "asleep" | "drowsy" | "restless" | "awake" | "unstable" | "offline" | "paused";
 
 // Mirrors the --tone values in globals.css (used where CSS variables can't reach, e.g. SVG/ribbon).
 export const TONE_HEX: Record<Tone, string> = {
@@ -13,12 +13,27 @@ export const TONE_HEX: Record<Tone, string> = {
   awake: "#ef8a76",
   unstable: "#7d8597",
   offline: "#4b5163",
+  paused: "#8a8f9c",
 };
 
-export function toneFor(state: SleepState | null | undefined, offline: boolean): Tone {
+export function toneFor(
+  state: SleepState | null | undefined,
+  offline: boolean,
+  cameraEnabled: boolean | undefined = true,
+): Tone {
   if (offline || !state) return "offline";
+  if (cameraEnabled === false) return "paused";
   return state === "SIGNAL_UNSTABLE" ? "unstable" : (state.toLowerCase() as Tone);
 }
+
+/** Tone for a telemetry packet (accounts for the camera switch). */
+export function toneOf(t: Telemetry | null | undefined, offline: boolean): Tone {
+  return toneFor(t?.state, offline || !t, t?.camera?.enabled);
+}
+
+// The baby's name is optional. Unnamed copy says "your baby" ("Your baby is sleeping soundly.").
+const subject = (name: string) => name || "Your baby";
+const object = (name: string) => name || "your baby";
 
 export interface StateCopy {
   headline: string;
@@ -27,32 +42,40 @@ export interface StateCopy {
 }
 
 // Wording describes what was observed. Never alarmist, never medical.
-export function copyFor(tone: Tone, camera?: CameraStatus): StateCopy {
-  const name = BABY_NAME;
+export function copyFor(tone: Tone, camera?: CameraStatus, name = ""): StateCopy {
   switch (tone) {
     case "asleep":
-      return { headline: `${name} is sleeping soundly.`, detail: "Breathing and movement look calm.", pill: "Asleep" };
+      return { headline: `${subject(name)} is sleeping soundly.`, detail: "Breathing and movement look calm.", pill: "Asleep" };
     case "drowsy":
-      return { headline: `${name} is drifting off.`, detail: "Getting sleepy, movement is settling.", pill: "Drowsy" };
+      return { headline: `${subject(name)} is drifting off.`, detail: "Settling: breathing is in a sleeping range and movement is calm.", pill: "Drowsy" };
     case "restless":
-      return { headline: `${name} is stirring.`, detail: "More movement than usual. Auto-soothe is ready if it continues.", pill: "Restless" };
+      return { headline: `${subject(name)} is stirring.`, detail: "More movement than usual. Auto-soothe is ready if it continues.", pill: "Restless" };
     case "awake":
-      return { headline: `${name} is awake.`, detail: "Active and moving around.", pill: "Awake" };
+      return { headline: `${subject(name)} is awake.`, detail: "Active, or breathing faster than in sleep.", pill: "Awake" };
     case "unstable":
-      return { headline: `Can’t see ${name} clearly.`, detail: unstableHint(camera), pill: "Signal unclear" };
+      return { headline: `Can’t see ${object(name)} clearly.`, detail: unstableHint(camera), pill: "Signal unclear" };
+    case "paused":
+      return {
+        headline: "Monitoring is paused.",
+        detail: "The camera is off. Turn it on to resume. No Presage credits are being used.",
+        pill: "Camera off",
+      };
     case "offline":
       return { headline: "Waiting for the monitor.", detail: "Can’t reach the camera unit right now.", pill: "Offline" };
   }
 }
 
-/** Short log line for a transition ("restless" -> "Maya became restless"). */
-export function eventText(tone: Tone, camera?: CameraStatus, prev?: Tone | null): string {
+/** Short log line for a transition ("restless" -> "[name] became restless"). */
+export function eventText(tone: Tone, camera?: CameraStatus, prev?: Tone | null, name = ""): string {
+  if (tone === "paused") return "Camera turned off";
+  if (prev === "paused") return "Camera turned on";
   if (prev === "offline" && tone !== "offline") return "Reconnected to the monitor";
+  const who = subject(name);
   switch (tone) {
-    case "asleep": return `${BABY_NAME} settled into sleep`;
-    case "drowsy": return `${BABY_NAME} is getting drowsy`;
-    case "restless": return `${BABY_NAME} became restless`;
-    case "awake": return `${BABY_NAME} woke up`;
+    case "asleep": return `${who} settled into sleep`;
+    case "drowsy": return `${who} is getting drowsy`;
+    case "restless": return `${who} became restless`;
+    case "awake": return `${who} woke up`;
     case "unstable": return `Signal unclear: ${unstableHint(camera)}`;
     case "offline": return "Lost connection to the monitor";
   }

@@ -1,7 +1,5 @@
 // Temporary product name; change it here only.
-export const APP_NAME = "CradleEcho";
-// Used in the UI copy ("Maya is sleeping soundly"). Make this a setting once onboarding exists.
-export const BABY_NAME = "Maya";
+export const APP_NAME = "Cribby";
 
 const DAEMON_PORT = 8000;
 
@@ -35,6 +33,7 @@ export const videoFeedUrl = (debug = false) =>
   // The debug feed has the daemon's face-gate and vitals overlay drawn on it.
   `${daemonUrl()}${debug ? "/video_feed/debug" : "/video_feed"}`;
 export const simulateRestlessUrl = () => `${daemonUrl()}/api/simulate-restless`;
+export const cameraUrl = () => `${daemonUrl()}/api/camera`;
 export const edgeSoothePlayUrl = () => `${daemonUrl()}/api/soothe/play`;
 export const edgeSootheStopUrl = () => `${daemonUrl()}/api/soothe/stop`;
 

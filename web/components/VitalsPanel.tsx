@@ -37,7 +37,11 @@ function Vital({ label, unit, pick, decimals, minSpan }: VitalProps) {
         <span className="text-sm text-ink-dim">{unit}</span>
       </div>
       <Sparkline values={series} minSpan={minSpan} className={`mt-3 text-tone transition-opacity duration-700 ${ok ? "" : "opacity-30"}`} />
-      {!ok && <p className="mt-1 text-sm text-ink-faint">Waiting for a clear reading.</p>}
+      {!ok && (
+        <p className="mt-1 text-sm text-ink-faint">
+          {latest?.camera?.enabled === false ? "Camera is off." : "Waiting for a clear reading."}
+        </p>
+      )}
     </div>
   );
 }
