@@ -41,3 +41,28 @@ EXCEPTION
         -- Safely ignore if extension or hypertable already exists or permissions differ
         NULL;
 END $$;
+
+-- 4. User accounts (authenticated via Google OAuth)
+CREATE TABLE IF NOT EXISTS users (
+    id VARCHAR(64) PRIMARY KEY,              -- Google Subject ID (sub)
+    email VARCHAR(255) UNIQUE NOT NULL,
+    name VARCHAR(255),
+    avatar_url TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    last_login_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);
+
+-- 5. Children / Baby profiles linked to parent
+CREATE TABLE IF NOT EXISTS babies (
+    id VARCHAR(64) PRIMARY KEY,              -- UUID or generated ID
+    parent_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    bedtime VARCHAR(5) DEFAULT '20:00',
+    wake_time VARCHAR(5) DEFAULT '07:00',
+    voice_id VARCHAR(100),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_babies_parent_id ON babies (parent_id);

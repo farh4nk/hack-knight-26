@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Fraunces, Instrument_Sans } from "next/font/google";
+import { AuthProvider } from "@/context/AuthProvider";
 import { NightShell } from "@/components/NightShell";
 import { TelemetryProvider } from "@/context/TelemetryProvider";
 import { APP_NAME } from "@/lib/config";
@@ -26,9 +27,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${fraunces.variable} ${instrument.variable} h-full`}>
       <body className="flex min-h-full flex-col">
-        <TelemetryProvider>
-          <NightShell>{children}</NightShell>
-        </TelemetryProvider>
+        <AuthProvider>
+          <TelemetryProvider>
+            <NightShell>{children}</NightShell>
+          </TelemetryProvider>
+        </AuthProvider>
       </body>
     </html>
   );

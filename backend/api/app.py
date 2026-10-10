@@ -126,7 +126,7 @@ def get_sleep_timeline(
                     WHERE time >= %s AND time <= %s
                     ORDER BY time ASC
                     LIMIT %s;
-                    """ if is_postgres() else """
+                    """ if is_postgres(conn) else """
                     SELECT time, state, breathing_rate, heart_rate, motion_index
                     FROM baby_vitals
                     WHERE time >= ? AND time <= ?
@@ -146,7 +146,7 @@ def get_sleep_timeline(
                 FROM baby_vitals
                 ORDER BY time DESC
                 LIMIT %s;
-                """ if is_postgres() else """
+                """ if is_postgres(conn) else """
                 SELECT time, state, breathing_rate, heart_rate, motion_index
                 FROM baby_vitals
                 ORDER BY time DESC
@@ -182,7 +182,7 @@ def get_vitals_trend(
                     WHERE time >= %s AND time <= %s
                     ORDER BY time ASC
                     LIMIT %s;
-                    """ if is_postgres() else """
+                    """ if is_postgres(conn) else """
                     SELECT time, breathing_rate, heart_rate, state
                     FROM baby_vitals
                     WHERE time >= ? AND time <= ?
@@ -201,7 +201,7 @@ def get_vitals_trend(
                 FROM baby_vitals
                 ORDER BY time DESC
                 LIMIT %s;
-                """ if is_postgres() else """
+                """ if is_postgres(conn) else """
                 SELECT time, breathing_rate, heart_rate, state
                 FROM baby_vitals
                 ORDER BY time DESC
@@ -224,7 +224,7 @@ def record_soothe_event(event: SootheEventCreate):
     with get_db_connection() as conn:
         cur = conn.cursor()
         try:
-            if is_postgres():
+            if is_postgres(conn):
                 cur.execute(
                     """
                     INSERT INTO soothe_events (triggered_at, resolved_at, voice_snippet_used, was_successful)
@@ -254,6 +254,142 @@ def record_soothe_event(event: SootheEventCreate):
         "voice_snippet_used": event.voice_snippet_used,
         "was_successful": event.was_successful
     }
+
+class UserSyncRequest(BaseModel):
+    id: str  # Google Sub ID
+    email: str
+    name: Optional[str] = None
+    avatar_url: Optional[str] = None
+
+class BabyProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    bedtime: Optional[str] = None
+    wake_time: Optional[str] = None
+    voice_id: Optional[str] = None
+
+@app.post("/api/users/sync")
+def sync_user(req: UserSyncRequest):
+    """Upserts Google authenticated user into database and matches to baby profile."""
+    import uuid
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        try:
+            if is_postgres(conn):
+                cur.execute(
+                    """
+                    INSERT INTO users (id, email, name, avatar_url, last_login_at)
+                    VALUES (%s, %s, %s, %s, NOW())
+                    ON CONFLICT (id) DO UPDATE SET
+                        name = EXCLUDED.name,
+                        avatar_url = EXCLUDED.avatar_url,
+                        last_login_at = NOW()
+                    RETURNING id, email, name, avatar_url, created_at;
+                    """,
+                    (req.id, req.email, req.name, req.avatar_url)
+                )
+                user_row = dict(cur.fetchone())
+
+                cur.execute("SELECT * FROM babies WHERE parent_id = %s ORDER BY created_at ASC;", (req.id,))
+                babies = [dict(r) for r in cur.fetchall()]
+                if not babies:
+                    baby_id = str(uuid.uuid4())
+                    cur.execute(
+                        """
+                        INSERT INTO babies (id, parent_id, name, bedtime, wake_time)
+                        VALUES (%s, %s, %s, %s, %s)
+                        RETURNING id, parent_id, name, bedtime, wake_time, voice_id, created_at;
+                        """,
+                        (baby_id, req.id, "Maya", "20:00", "07:00")
+                    )
+                    baby = dict(cur.fetchone())
+                    babies = [baby]
+                else:
+                    baby = babies[0]
+            else:
+                cur.execute(
+                    """
+                    INSERT INTO users (id, email, name, avatar_url, last_login_at)
+                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(id) DO UPDATE SET
+                        name = excluded.name,
+                        avatar_url = excluded.avatar_url,
+                        last_login_at = CURRENT_TIMESTAMP;
+                    """,
+                    (req.id, req.email, req.name, req.avatar_url)
+                )
+                cur.execute("SELECT id, email, name, avatar_url, created_at FROM users WHERE id = ?;", (req.id,))
+                user_row = dict(cur.fetchone())
+
+                cur.execute("SELECT * FROM babies WHERE parent_id = ? ORDER BY created_at ASC;", (req.id,))
+                babies = [dict(r) for r in cur.fetchall()]
+                if not babies:
+                    baby_id = str(uuid.uuid4())
+                    cur.execute(
+                        """
+                        INSERT INTO babies (id, parent_id, name, bedtime, wake_time)
+                        VALUES (?, ?, ?, ?, ?);
+                        """,
+                        (baby_id, req.id, "Maya", "20:00", "07:00")
+                    )
+                    cur.execute("SELECT id, parent_id, name, bedtime, wake_time, voice_id, created_at FROM babies WHERE id = ?;", (baby_id,))
+                    baby = dict(cur.fetchone())
+                    babies = [baby]
+                else:
+                    baby = babies[0]
+
+            return {"user": user_row, "baby": baby, "babies": babies}
+        finally:
+            cur.close()
+
+@app.get("/api/users/{user_id}/baby")
+def get_user_baby(user_id: str):
+    """Returns primary baby profile for authenticated parent."""
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        try:
+            cur.execute("SELECT * FROM babies WHERE parent_id = %s ORDER BY created_at ASC;" if is_postgres(conn) else "SELECT * FROM babies WHERE parent_id = ? ORDER BY created_at ASC;", (user_id,))
+            rows = cur.fetchall()
+            if not rows:
+                raise HTTPException(status_code=404, detail="No baby profile found for user")
+            return {"baby": dict(rows[0]), "babies": [dict(r) for r in rows]}
+        finally:
+            cur.close()
+
+@app.put("/api/babies/{baby_id}")
+def update_baby_profile(baby_id: str, update: BabyProfileUpdate):
+    """Updates child's name, bedtime schedule, or ElevenLabs voice ID."""
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        try:
+            fields = []
+            values = []
+            if update.name is not None:
+                fields.append("name = %s" if is_postgres(conn) else "name = ?")
+                values.append(update.name)
+            if update.bedtime is not None:
+                fields.append("bedtime = %s" if is_postgres(conn) else "bedtime = ?")
+                values.append(update.bedtime)
+            if update.wake_time is not None:
+                fields.append("wake_time = %s" if is_postgres(conn) else "wake_time = ?")
+                values.append(update.wake_time)
+            if update.voice_id is not None:
+                fields.append("voice_id = %s" if is_postgres(conn) else "voice_id = ?")
+                values.append(update.voice_id)
+
+            if not fields:
+                raise HTTPException(status_code=400, detail="No fields provided for update")
+
+            values.append(baby_id)
+            query = f"UPDATE babies SET {', '.join(fields)} WHERE id = {'%s' if is_postgres(conn) else '?'};"
+            cur.execute(query, tuple(values))
+
+            cur.execute("SELECT * FROM babies WHERE id = %s;" if is_postgres(conn) else "SELECT * FROM babies WHERE id = ?;", (baby_id,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Baby profile not found")
+            return {"status": "updated", "baby": dict(row)}
+        finally:
+            cur.close()
 
 if __name__ == "__main__":
     import uvicorn

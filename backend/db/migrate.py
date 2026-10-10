@@ -27,6 +27,29 @@ CREATE TABLE IF NOT EXISTS soothe_events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_soothe_events_triggered_at ON soothe_events (triggered_at DESC);
+
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    email TEXT UNIQUE NOT NULL,
+    name TEXT,
+    avatar_url TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    last_login_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);
+
+CREATE TABLE IF NOT EXISTS babies (
+    id TEXT PRIMARY KEY,
+    parent_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    bedtime TEXT DEFAULT '20:00',
+    wake_time TEXT DEFAULT '07:00',
+    voice_id TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_babies_parent_id ON babies (parent_id);
 """
 
 def run_migrations():
@@ -35,23 +58,25 @@ def run_migrations():
     print("CradleEcho Database Migration (Dev 4)")
     print("=" * 60)
 
-    if is_postgres():
-        print(f"Target: PostgreSQL / Tiger Data ({DATABASE_URL.split('@')[-1] if '@' in DATABASE_URL else 'PostgreSQL'})")
-        if not SCHEMA_PATH.exists():
-            print(f"Error: Schema file not found at {SCHEMA_PATH}")
-            sys.exit(1)
-
-        sql_content = SCHEMA_PATH.read_text(encoding="utf-8")
-        with get_db_connection() as conn:
-            with conn.cursor() as cur:
+    with get_db_connection() as conn:
+        import sqlite3
+        if isinstance(conn, sqlite3.Connection):
+            print("Target: SQLite (cradleecho_local.db)")
+            conn.executescript(SQLITE_FALLBACK_SCHEMA)
+            print("Successfully migrated tables ('users', 'babies', 'baby_vitals', 'soothe_events') to SQLite!")
+        else:
+            print(f"Target: PostgreSQL / Tiger Data ({DATABASE_URL.split('@')[-1] if '@' in DATABASE_URL else 'PostgreSQL'})")
+            if not SCHEMA_PATH.exists():
+                print(f"Error: Schema file not found at {SCHEMA_PATH}")
+                sys.exit(1)
+            sql_content = SCHEMA_PATH.read_text(encoding="utf-8")
+            cur = conn.cursor()
+            try:
                 print("Executing schema.sql on Tiger Data PostgreSQL...")
                 cur.execute(sql_content)
-        print("Successfully migrated 'baby_vitals' and 'soothe_events' on Tiger Data!")
-    else:
-        print("Note: DATABASE_URL not set or not Postgres. Using local SQLite fallback for development.")
-        with get_db_connection() as conn:
-            conn.executescript(SQLITE_FALLBACK_SCHEMA)
-        print("Successfully migrated tables to local SQLite (cradleecho_local.db)!")
+            finally:
+                cur.close()
+            print("Successfully migrated tables ('users', 'babies', 'baby_vitals', 'soothe_events') on Tiger Data!")
 
     print("Migration complete. Tables ready for telemetry ingestion and queries.")
     print("=" * 60)

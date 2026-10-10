@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BabyNameButton } from "@/components/BabyNameButton";
+import { UserMenu } from "@/components/UserMenu";
 import { useTelemetry } from "@/context/TelemetryProvider";
 import { APP_NAME } from "@/lib/config";
 import { useDaemonUrl } from "@/lib/useDaemonUrl";
@@ -55,6 +56,7 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-3 text-sm text-ink-dim">
+        <UserMenu />
         <BabyNameButton />
         {/* Local Edge Privacy Guard Badge */}
         <div
