@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 import datetime
 from backend.db.connection import get_db_connection, is_postgres, test_connection
-from backend.services.gemini_summary import fetch_nightly_metrics, generate_morning_brief
+from backend.services.gemini_summary import fetch_nightly_metrics, generate_morning_brief, answer_nightly_question
 
 app = FastAPI(
     title="CradleEcho Analytics & Summary API",
@@ -30,6 +30,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+class NightlyQAQuery(BaseModel):
+    question: str
+    baby_name: Optional[str] = "Maya"
 
 class SootheEventCreate(BaseModel):
     triggered_at: Optional[str] = None
@@ -69,6 +73,15 @@ def get_nightly_summary(baby_name: str = "Maya", hours: int = 12):
         metrics = fetch_nightly_metrics(hours=hours)
         summary = generate_morning_brief(metrics, baby_name=baby_name)
         return summary
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/nightly-qa")
+def ask_nightly_qa(query: NightlyQAQuery):
+    """Answers parent questions about sleep vitals using Gemini and Tiger Data."""
+    try:
+        res = answer_nightly_question(query.question, baby_name=query.baby_name or "Maya")
+        return res
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -53,15 +53,28 @@ export function Header() {
         </nav>
       </div>
 
-      <div className="flex items-center gap-2 text-sm text-ink-dim">
-        <span
-          className={`h-2 w-2 rounded-full ${live ? "bg-tone" : "bg-ink-faint"} ${live ? "breathe" : ""}`}
-          aria-hidden
-        />
-        <span>
-          {mock ? "Demo data" : live ? "Nursery · live" : "Connecting…"}
-          {!mock && daemon ? <span className="hidden text-ink-faint sm:inline"> · {daemon.replace(/^https?:\/\//, "")}</span> : null}
-        </span>
+      <div className="flex items-center gap-3 text-sm text-ink-dim">
+        {/* Local Edge Privacy Guard Badge */}
+        <div
+          title="Privacy Shield: Crib video is processed 100% locally on-device. Zero video frames uploaded to the cloud."
+          className="hidden sm:flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-400 ring-1 ring-emerald-500/25"
+        >
+          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+          <span>Local Edge Guard</span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span
+            className={`h-2 w-2 rounded-full ${live ? "bg-tone" : "bg-ink-faint"} ${live ? "breathe" : ""}`}
+            aria-hidden
+          />
+          <span>
+            {mock ? "Demo data" : live ? "Nursery · live" : "Connecting…"}
+            {!mock && daemon ? <span className="hidden text-ink-faint sm:inline"> · {daemon.replace(/^https?:\/\//, "")}</span> : null}
+          </span>
+        </div>
       </div>
     </header>
   );
