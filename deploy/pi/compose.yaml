@@ -12,6 +12,9 @@ services:
       - "8000:8000"
     env_file:
       - daemon.env # PRESAGE_API_KEY etc.
+    environment:
+      - CRADLEECHO_LISTEN=${CRADLEECHO_LISTEN:-0}
+      - CRADLEECHO_MIC=${CRADLEECHO_MIC:-default}
     devices:
       # Container path stays /dev/video0 (the image's CRADLEECHO_CAMERA). Run pi_check.sh to
       # find which host node is the Logitech; a Pi has many /dev/video* nodes.

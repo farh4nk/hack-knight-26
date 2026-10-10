@@ -51,12 +51,17 @@ def format_telemetry_payload(
     sdk_code = getattr(source, "validation_code", None) if session_running else None
     sdk_hint = getattr(source, "raw_validation_hint", None) if session_running else None
 
+    night_vision_mode = getattr(camera, "get_night_vision_mode", lambda: "OFF")() if camera else "OFF"
+    enhancing = getattr(camera, "is_enhancing", lambda: False)() if camera else False
+
     camera_info = {
         "live": is_live,
         "gate": gate_state,
         "framing": framing,
         "sdk_code": sdk_code,
         "sdk_hint": sdk_hint,
+        "night_vision": night_vision_mode,
+        "enhancing": enhancing,
     }
 
     return {

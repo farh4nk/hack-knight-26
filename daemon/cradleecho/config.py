@@ -24,5 +24,14 @@ class Settings(BaseSettings):
     gate_chest_room: float = Field(default=1.75, gt=0, validation_alias="CRADLEECHO_GATE_CHEST_ROOM")
     gate_min_face_frac: float = Field(default=0.15, gt=0, validation_alias="CRADLEECHO_GATE_MIN_FACE")
 
+    # Two-way audio
+    listen_enabled: bool = Field(default=False, validation_alias="CRADLEECHO_LISTEN")
+    mic_device: str = Field(default="default", validation_alias="CRADLEECHO_MIC")
+
+    # Night vision
+    night_vision_mode: str = Field(default="AUTO", validation_alias="CRADLEECHO_NIGHT_VISION")
+    night_on_below: float = Field(default=60.0, validation_alias="CRADLEECHO_NIGHT_ON_BELOW")
+    night_off_above: float = Field(default=80.0, validation_alias="CRADLEECHO_NIGHT_OFF_ABOVE")
+
 
 settings = Settings()

@@ -111,6 +111,8 @@ Valid states: `ASLEEP | DROWSY | RESTLESS | AWAKE | SIGNAL_UNSTABLE`
 - `framing` (string): `OK`, `NO_FACE`, `MULTIPLE_FACES`, `TOO_SMALL`, `OFF_CENTER`, `NO_CHEST_ROOM`, or `UNKNOWN`
 - `sdk_code` (string | null): latest Presage validation error code (e.g. `kFaceTooLow`), or `null`
 - `sdk_hint` (string | null): human-readable Presage fix instruction, or `null`
+- `night_vision` (string): `OFF`, `AUTO`, or `ON` — configured night vision mode
+- `enhancing` (bool): `true` when low-light enhancement is currently applied to the video feed
 
 ## Team responsibilities
 

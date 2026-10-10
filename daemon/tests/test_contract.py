@@ -23,13 +23,15 @@ def test_contract_format_telemetry_payload():
     
     assert set(payload.keys()) == {"timestamp", "state", "vitals", "motion_index", "camera"}
     assert set(payload["vitals"].keys()) == {"brpm", "bpm", "confidence"}
-    assert set(payload["camera"].keys()) == {"live", "gate", "framing", "sdk_code", "sdk_hint"}
+    assert set(payload["camera"].keys()) == {"live", "gate", "framing", "sdk_code", "sdk_hint", "night_vision", "enhancing"}
     
     assert re.match(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$", payload["timestamp"])
     assert payload["state"] in VALID_STATES
     assert payload["camera"]["gate"] == "DISABLED"
     assert payload["camera"]["framing"] == "UNKNOWN"
     assert payload["camera"]["live"] is False
+    assert payload["camera"]["night_vision"] == "OFF"
+    assert payload["camera"]["enhancing"] is False
 
 
 def test_contract_api_state_mock():
@@ -45,11 +47,14 @@ def test_contract_api_state_mock():
         
         assert set(payload.keys()) == {"timestamp", "state", "vitals", "motion_index", "camera"}
         assert set(payload["vitals"].keys()) == {"brpm", "bpm", "confidence"}
+        assert set(payload["camera"].keys()) == {"live", "gate", "framing", "sdk_code", "sdk_hint", "night_vision", "enhancing"}
         assert re.match(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$", payload["timestamp"])
         assert payload["state"] in VALID_STATES
         assert payload["camera"]["live"] is False
         assert payload["camera"]["gate"] == "DISABLED"
         assert payload["camera"]["framing"] == "UNKNOWN"
+        assert payload["camera"]["night_vision"] == "AUTO"
+        assert payload["camera"]["enhancing"] is False
 
 
 def test_contract_api_state_stale_presage():
@@ -79,11 +84,13 @@ def test_contract_api_state_stale_presage():
         
         assert set(payload.keys()) == {"timestamp", "state", "vitals", "motion_index", "camera"}
         assert set(payload["vitals"].keys()) == {"brpm", "bpm", "confidence"}
-        assert set(payload["camera"].keys()) == {"live", "gate", "framing", "sdk_code", "sdk_hint"}
+        assert set(payload["camera"].keys()) == {"live", "gate", "framing", "sdk_code", "sdk_hint", "night_vision", "enhancing"}
         assert re.match(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$", payload["timestamp"])
         assert payload["state"] in VALID_STATES
         assert payload["camera"]["sdk_code"] is None
         assert payload["camera"]["sdk_hint"] is None
+        assert payload["camera"]["night_vision"] == "AUTO"
+        assert payload["camera"]["enhancing"] is False
 
 def test_contract_camera_fields():
     from cradleecho.sources.presage import PresageVitalsSource

@@ -175,6 +175,7 @@ def test_camera_debug_slot(monkeypatch):
     monkeypatch.setattr("cv2.VideoCapture", lambda x: FakeCap())
     
     cam = Camera(device="0")
+    cam.set_night_vision_mode("OFF")  # all-black frames would otherwise trigger AUTO enhancement
     cam.set_overlay(lambda f: None)
     cam.start()
     try:
