@@ -10,7 +10,12 @@ const SUGGESTED_QUESTIONS = [
   `How does her sleep compare to normal infant baselines?`,
 ];
 
-export function GeminiNightQA() {
+interface GeminiNightQAProps {
+  bedtime?: string;
+  wakeTime?: string;
+}
+
+export function GeminiNightQA({ bedtime = "20:00", wakeTime = "07:00" }: GeminiNightQAProps) {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<string | null>(null);
   const [modelUsed, setModelUsed] = useState<string | null>(null);
@@ -29,7 +34,12 @@ export function GeminiNightQA() {
       const res = await fetch(`${analyticsUrl()}/api/nightly-qa`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: q, baby_name: BABY_NAME }),
+        body: JSON.stringify({
+          question: q,
+          baby_name: BABY_NAME,
+          bedtime,
+          wake_time: wakeTime,
+        }),
       });
 
       if (!res.ok) throw new Error("Could not reach Gemini sleep assistant");
