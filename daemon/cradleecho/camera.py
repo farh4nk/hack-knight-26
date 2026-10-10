@@ -88,6 +88,13 @@ class Camera:
         self._latest_raw: np.ndarray | None = None
         self._raw_seq: int = 0
 
+        # Listeners (face gate, Presage push) run on their own thread, newest frame only, so
+        # their cost never slows capture, motion or the MJPEG stream.
+        self._listener_cond = threading.Condition()
+        self._listener_frame: np.ndarray | None = None
+        self._listener_seq: int = 0
+        self._listener_thread: threading.Thread | None = None
+
     def set_overlay(self, fn: Callable[[np.ndarray], None] | None) -> None:
         """Set a callback to draw an overlay on the encoded MJPEG frame."""
         with self._lock:
@@ -111,6 +118,28 @@ class Camera:
         self._stop_event.clear()
         self._thread = threading.Thread(target=self._capture_loop, name="CameraCaptureThread", daemon=True)
         self._thread.start()
+        self._listener_thread = threading.Thread(
+            target=self._listener_loop, name="CameraListenerThread", daemon=True
+        )
+        self._listener_thread.start()
+
+    def _listener_loop(self) -> None:
+        seen = 0
+        while not self._stop_event.is_set():
+            with self._listener_cond:
+                self._listener_cond.wait_for(
+                    lambda: self._listener_seq != seen or self._stop_event.is_set(), timeout=0.5
+                )
+                if self._listener_seq == seen or self._listener_frame is None:
+                    continue
+                seen, frame = self._listener_seq, self._listener_frame
+            t0 = time.perf_counter()
+            for listener in list(self._frame_listeners):
+                try:
+                    listener(frame)
+                except Exception:
+                    logger.exception("Frame listener failed")
+            diag.timed("listeners", time.perf_counter() - t0)
 
     def stop(self) -> None:
         """Stop capture thread and release resources."""
@@ -118,11 +147,16 @@ class Camera:
         if self._thread is not None:
             self._thread.join(timeout=2.0)
             self._thread = None
+        with self._listener_cond:
+            self._listener_cond.notify_all()
+        if self._listener_thread is not None:
+            self._listener_thread.join(timeout=2.0)
+            self._listener_thread = None
 
     def add_frame_listener(self, listener: Callable[[np.ndarray], None]) -> None:
-        """Register a callback receiving each live BGR frame on the capture thread.
+        """Register a callback receiving live BGR frames on the listener thread.
 
-        Listeners must return quickly and never block.
+        Slow listeners skip frames (newest wins); they never slow capture.
         """
         self._frame_listeners.append(listener)
 
@@ -278,13 +312,10 @@ class Camera:
 
                 if frame is not None:
                     diag.count("loop_frames")
-                    t0 = time.perf_counter()
-                    for listener in self._frame_listeners:
-                        try:
-                            listener(frame)
-                        except Exception:
-                            logger.exception("Frame listener failed")
-                    diag.timed("listeners", time.perf_counter() - t0)
+                    with self._listener_cond:
+                        self._listener_frame = frame
+                        self._listener_seq += 1
+                        self._listener_cond.notify_all()
 
                     # Frame-diff motion on a half-size image: ~4x cheaper than full-size, and an
                     # 11px blur at half-size matches the old 21px blur at full-size.
