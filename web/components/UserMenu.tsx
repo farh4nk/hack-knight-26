@@ -188,7 +188,7 @@ export function UserMenu() {
                 <div className="mt-1.5 flex flex-col gap-1 text-xs">
                   <div className="flex justify-between text-ink">
                     <span className="text-ink-dim">Name:</span>
-                    <span className="font-medium">{baby?.name || "Maya"}</span>
+                    <span className="font-medium">{baby?.name || "Your baby"}</span>
                   </div>
                   <div className="flex justify-between text-ink">
                     <span className="text-ink-dim">Bedtime schedule:</span>

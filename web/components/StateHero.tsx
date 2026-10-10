@@ -16,9 +16,9 @@ function sinceLabel(since: number, now: number): string {
 
 /** One human sentence about how the baby is doing right now. */
 export function StateHero() {
-  const { latest, connected, stale, stateSince } = useTelemetry();
+  const { latest, connected, stale, stateSince, sourceMode } = useTelemetry();
   const now = useNow();
-  const tone = toneOf(latest, !connected || stale);
+  const tone = toneOf(latest, !connected || stale, sourceMode);
   const name = useBabyName() ?? "";
   const copy = copyFor(tone, latest?.camera, name);
   const showDuration = tone !== "offline" && stateSince !== null && now > 0;

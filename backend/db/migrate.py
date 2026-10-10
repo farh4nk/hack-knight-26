@@ -55,7 +55,7 @@ CREATE INDEX IF NOT EXISTS idx_babies_parent_id ON babies (parent_id);
 def run_migrations():
     """Runs database migrations for Tiger Data / PostgreSQL or fallback SQLite."""
     print("=" * 60)
-    print("CradleEcho Database Migration (Dev 4)")
+    print("Cribby Database Migration (Dev 4)")
     print("=" * 60)
 
     with get_db_connection() as conn:

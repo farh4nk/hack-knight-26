@@ -93,9 +93,11 @@ def test_api_toggle_reports_camera_off_and_clears_readings():
     camera = Camera(device="none")
     app = create_app(camera=camera, source=MockVitalsSource(seed=1), classifier=SleepStateClassifier())
     with TestClient(app) as client:
+        # Switch to real sensor mode
+        client.post("/api/source", json={"source": "real"})
         assert client.get("/api/camera").json()["enabled"] is True
-        assert client.get("/api/state").json()["camera"]["enabled"] is True
 
+        # Turn camera off in real mode: clears readings & reports SIGNAL_UNSTABLE
         r = client.post("/api/camera", json={"enabled": False})
         assert r.status_code == 200 and r.json()["enabled"] is False
         state = client.get("/api/state").json()
@@ -106,6 +108,24 @@ def test_api_toggle_reports_camera_off_and_clears_readings():
 
         client.post("/api/camera", json={"enabled": True})
         assert client.get("/api/state").json()["camera"]["enabled"] is True
+
+
+def test_api_toggle_camera_off_preserves_simulated_readings():
+    camera = Camera(device="none")
+    app = create_app(camera=camera, source=MockVitalsSource(seed=1), classifier=SleepStateClassifier())
+    with TestClient(app) as client:
+        assert client.get("/api/camera").json()["enabled"] is True
+        assert client.get("/api/state").json()["camera"]["enabled"] is True
+
+        # Turn camera off in simulated mode: camera is marked off, but synthetic vitals keep flowing
+        r = client.post("/api/camera", json={"enabled": False})
+        assert r.status_code == 200 and r.json()["enabled"] is False
+        state = client.get("/api/state").json()
+        assert state["camera"]["enabled"] is False
+        assert state["state"] in ("ASLEEP", "DROWSY", "RESTLESS", "AWAKE")
+        assert state["vitals"]["brpm"] > 0.0
+        assert state["vitals"]["bpm"] > 0.0
+        assert state["vitals"]["confidence"] > 0.0
 
 
 def test_api_rejects_a_bad_toggle_body():

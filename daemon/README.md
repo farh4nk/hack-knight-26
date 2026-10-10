@@ -1,6 +1,6 @@
-# CradleEcho Edge Daemon
+# Cribby Edge Daemon
 
-Edge daemon for CradleEcho baby monitor. Captures camera frames, computes motion index, consumes biometric vitals (breathing and pulse rates) via Presage SDK or mock source, classifies infant sleep states using a rolling state machine, and broadcasts real-time telemetry over WebSockets.
+Edge daemon for Cribby baby monitor. Captures camera frames, computes motion index, consumes biometric vitals (breathing and pulse rates) via Presage SDK or mock source, classifies infant sleep states using a rolling state machine, and broadcasts real-time telemetry over WebSockets.
 
 ## Requirements
 
@@ -160,3 +160,19 @@ docker buildx build --platform linux/arm64 -t cradleecho-daemon .
 docker save cradleecho-daemon | ssh pi docker load
 ```
 Note: arm64 is NOT yet tested.
+
+## Two-way audio
+
+Needs ALSA devices on the host (`aplay` for the speaker, `arecord` for the mic; `/dev/snd` is passed through in `deploy/pi/compose.yaml`).
+
+- `WS /ws/talk`: parent to crib speaker. Send binary frames of 16 kHz mono S16LE PCM. One talker at a time (a second connection is closed with code 4409); a session is cut off after 120 s. Starting to talk stops any soothe audio.
+- `WS /ws/listen`: crib mic to parent. Off by default; set `CRADLEECHO_LISTEN=1` to enable (otherwise closed with code 4403). `CRADLEECHO_MIC` picks the ALSA capture device (default `default`).
+- `GET /api/audio/capabilities` returns `{"talk": bool, "listen": bool}`.
+
+## Night vision
+
+Low-light enhancement (CLAHE plus gain) applied to the `/video_feed` and debug streams only. Presage, motion detection and the brightness gate always see the raw frame, so enhancement never makes vitals look more reliable than they are.
+
+- `GET/POST /api/night-vision` with `{"mode": "OFF" | "AUTO" | "ON"}`; responses are `{"mode", "active"}`.
+- `CRADLEECHO_NIGHT_VISION` (default `AUTO`), `CRADLEECHO_NIGHT_ON_BELOW` (60) and `CRADLEECHO_NIGHT_OFF_ABOVE` (80) set the default mode and the AUTO hysteresis.
+- Telemetry `camera` carries `night_vision` and `enhancing`.

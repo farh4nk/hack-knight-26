@@ -1,8 +1,8 @@
-# CradleEcho
+# Cribby
 
 ## Working pitch
 
-CradleEcho is a baby monitor that does more than show a live crib feed. It interprets sleep quality in real time, surfacing breathing and heart-rate signals, and can soothe a restless baby in the parent’s own voice before the parent has to get up.
+Cribby is a baby monitor that does more than show a live crib feed. It interprets sleep quality in real time, surfacing breathing and heart-rate signals, and can soothe a restless baby in the parent’s own voice before the parent has to get up.
 
 ## Product vision
 
@@ -112,6 +112,8 @@ Valid states: `ASLEEP | DROWSY | RESTLESS | AWAKE | SIGNAL_UNSTABLE`
 - `framing` (string): `OK`, `NO_FACE`, `MULTIPLE_FACES`, `TOO_SMALL`, `OFF_CENTER`, `NO_CHEST_ROOM`, or `UNKNOWN`
 - `sdk_code` (string | null): latest Presage validation error code (e.g. `kFaceTooLow`), or `null`
 - `sdk_hint` (string | null): human-readable Presage fix instruction, or `null`
+- `night_vision` (string): `OFF`, `AUTO`, or `ON` — configured night vision mode
+- `enhancing` (bool): `true` when low-light enhancement is currently applied to the video feed
 - `enabled` (bool, optional): `false` when the user switched the camera off (`POST /api/camera`); vitals are zeroed, `state` is `SIGNAL_UNSTABLE`, and consumers should not record the reading
 
 ## Project status (updated 2026-10-10)
@@ -180,9 +182,9 @@ Deliverable: the parent-facing mobile-first monitoring UI.
   - Green: `Asleep`
   - Yellow/pulsing: `Restless - Auto-Soothe Primed`
   - Red: `Awake`
-  - Grey: `Signal Unstable — Adjust Crib Lighting`
+  - Grey: `Signal Unstable — Hold still, taking a reading` (specific framing or Presage hints take priority)
 - [ ] Task 2.4 — Live vitals gauges: render cards for breathing rate (BrPM) and heart rate (BPM) with simple sparkline charts.
-- [ ] Task 2.5 — Safety UI: place the required disclaimer in the footer: “CradleEcho is an informational wellness monitor, not a medical or SIDS-prevention device.”
+- [ ] Task 2.5 — Safety UI: place the required disclaimer in the footer: “Cribby is an informational wellness monitor, not a medical or SIDS-prevention device.”
 - [ ] Task 2.6 — Stage demo controls: add a hidden or prominent “Trigger Test Restlessness” button that hits Dev 1’s mock endpoint.
 
 ### Dev 3: Audio pipeline & auto-soothe engine (ElevenLabs + Web Audio)
@@ -191,10 +193,10 @@ Deliverable: voice-cloning setup and the automated multi-track playback loop.
 
 - [ ] Task 3.1 — Instant Voice Clone (IVC) onboarding: build a 10-second browser mic recorder component. On completion, call ElevenLabs:
   `POST https://api.elevenlabs.io/v1/voices/add` with the audio blob to register the parent’s voice and retrieve `voice_id`.
-- [ ] Task 3.2 — Pre-render soothing audio snippets: send text prompts to `POST /v1/text-to-speech/{voice_id}` to generate three calming variations:
-  - “Shh, you’re safe, go back to sleep Maya.”
-  - “Mommy and daddy are right here, sweet dreams.”
-  - “Everything is okay, close your eyes.”
+- [ ] Task 3.2 — Pre-render soothing audio snippets: send text prompts to `POST /v1/text-to-speech/{voice_id}` to generate three short phrases, spoken in a soft, gentle voice:
+  - “Shhh”
+  - “Go to sleep”
+  - “Good night”
 - [ ] Task 3.3 — Auto-soothe orchestrator: subscribe to the telemetry stream. When `state === "RESTLESS"` for 4 seconds:
   - trigger an ambient lullaby/heartbeat track using HTML5 Audio
   - overlay the ElevenLabs snippet at 70% volume
@@ -232,7 +234,7 @@ CREATE TABLE soothe_events (
   - average BrPM
   - soothe events count and resolution durations
 
-  Output: a clean three-bullet report for the parent, e.g. “Maya slept 7.8 hours. Auto-soothe intervened twice, settling restlessness in under 45 seconds each time.”
+  Output: a clean three-bullet report for the parent, e.g. “[Name] slept 7.8 hours. Auto-soothe intervened twice, settling restlessness in under 45 seconds each time.”
 - [ ] Task 4.4 — Domain & hosting: register the project domain via GoDaddy and configure DNS to point to the Vercel or Render deployment.
 
 ## Definition of done

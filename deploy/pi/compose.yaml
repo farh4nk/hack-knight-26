@@ -13,6 +13,8 @@ services:
     env_file:
       - daemon.env # PRESAGE_API_KEY etc.
     environment:
+      - CRADLEECHO_LISTEN=${CRADLEECHO_LISTEN:-0}
+      - CRADLEECHO_MIC=${CRADLEECHO_MIC:-default}
       # Pi 4 tuning, measured on a Pi 4 + Logitech Brio 101:
       # - The Presage bridge only keeps up with ~14 fps at 640x480 but ~27 fps at 480x360. It
       #   needs >= 25 fps (kFrameRateTooLow otherwise).

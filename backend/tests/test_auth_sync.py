@@ -22,7 +22,7 @@ def test_sync_new_user_and_auto_seed_baby():
     assert data["user"]["email"] == f"{test_sub}@example.com"
     assert data["user"]["name"] == "Alex Smith"
     assert data["baby"]["parent_id"] == test_sub
-    assert data["baby"]["name"] == "Maya"
+    assert data["baby"]["name"] == ""
     baby_id = data["baby"]["id"]
 
     # Fetch baby via parent user ID
@@ -32,14 +32,14 @@ def test_sync_new_user_and_auto_seed_baby():
 
     # Update baby profile
     update_res = client.put(f"/api/babies/{baby_id}", json={
-        "name": "Maya Rose",
+        "name": "Test Baby",
         "bedtime": "19:30",
         "wake_time": "06:30",
         "voice_id": "test_elevenlabs_voice_123"
     })
     assert update_res.status_code == 200
     updated_baby = update_res.json()["baby"]
-    assert updated_baby["name"] == "Maya Rose"
+    assert updated_baby["name"] == "Test Baby"
     assert updated_baby["bedtime"] == "19:30"
     assert updated_baby["voice_id"] == "test_elevenlabs_voice_123"
 
@@ -54,4 +54,4 @@ def test_sync_new_user_and_auto_seed_baby():
     resync_data = resync_response.json()
     assert resync_data["user"]["name"] == "Alex Smith Updated"
     assert resync_data["baby"]["id"] == baby_id
-    assert resync_data["baby"]["name"] == "Maya Rose"
+    assert resync_data["baby"]["name"] == "Test Baby"

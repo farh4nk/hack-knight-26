@@ -21,6 +21,36 @@ from cradleecho.config import settings
 
 logger = logging.getLogger(__name__)
 
+NIGHT_VISION_MODES = {"OFF", "AUTO", "ON"}
+
+
+def enhance_low_light(frame: np.ndarray, brightness: float) -> np.ndarray:
+    """Enhance a low-light BGR frame using gain + CLAHE on L channel.
+
+    Args:
+        frame: Input BGR frame (uint8).
+        brightness: Current mean brightness (0-255), used to scale gain.
+
+    Returns:
+        Enhanced BGR frame (uint8).
+    """
+    # Convert to LAB
+    lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+    l, a, b = cv2.split(lab)
+
+    # Global gain: only boost when brightness < 100; no change at 100+
+    norm_brightness = min(1.0, max(0.0, brightness / 100.0))
+    gain = max(1.0, 3.0 - 2.0 * norm_brightness)  # 3.0 at 0, 1.0 at 100, 1.0 above
+    l_gained = cv2.convertScaleAbs(l, alpha=gain, beta=0)
+
+    # CLAHE on gained L channel
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    l_enhanced = clahe.apply(l_gained)
+
+    # Merge and convert back
+    lab_enhanced = cv2.merge([l_enhanced, a, b])
+    return cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2BGR)
+
 
 def create_synthetic_frame(
     text: str = "NO CAMERA", subtitle: str = "SIGNAL UNSTABLE / CHECK CONNECTION"
@@ -37,7 +67,7 @@ def create_synthetic_frame(
         (w, _), _ = cv2.getTextSize(msg, cv2.FONT_HERSHEY_SIMPLEX, scale, thickness)
         cv2.putText(img, msg, ((640 - w) // 2, y), cv2.FONT_HERSHEY_SIMPLEX, scale, color, thickness, cv2.LINE_AA)
 
-    centered("CRADLEECHO MONITOR", 200, 0.9, (220, 220, 220), 2)
+    centered("CRIBBY MONITOR", 200, 0.9, (220, 220, 220), 2)
     centered(text, 250, 0.8, (80, 140, 255), 2)
     centered(subtitle, 300, 0.55, (160, 160, 160), 1)
     return img
@@ -65,6 +95,14 @@ class Camera:
         self._thread: threading.Thread | None = None
         self._overlay_fn: Callable[[np.ndarray], None] | None = None
 
+        # Night vision
+        self._night_vision_mode: str = settings.night_vision_mode.upper()
+        if self._night_vision_mode not in NIGHT_VISION_MODES:
+            self._night_vision_mode = "AUTO"
+        self._night_on_below: float = settings.night_on_below
+        self._night_off_above: float = settings.night_off_above
+        self._enhancing: bool = False
+        self._brightness_ema: float | None = None  # separate EMA for night vision hysteresis
         # User-controlled on/off. Off releases the device and serves a placeholder; the capture
         # loop waits on this event while paused.
         self._enabled = threading.Event()
@@ -96,6 +134,47 @@ class Camera:
         self._listener_frame: np.ndarray | None = None
         self._listener_seq: int = 0
         self._listener_thread: threading.Thread | None = None
+
+    def get_night_vision_mode(self) -> str:
+        """Return current night vision mode (OFF, AUTO, ON)."""
+        with self._lock:
+            return self._night_vision_mode
+
+    def set_night_vision_mode(self, mode: str) -> None:
+        """Set night vision mode. Must be OFF, AUTO, or ON."""
+        mode = mode.upper()
+        if mode not in NIGHT_VISION_MODES:
+            raise ValueError(f"Invalid night vision mode: {mode}")
+        with self._lock:
+            self._night_vision_mode = mode
+            if mode == "OFF":
+                self._enhancing = False
+            elif mode == "ON":
+                self._enhancing = True
+
+    def is_enhancing(self) -> bool:
+        """Return whether night vision enhancement is currently active."""
+        with self._lock:
+            return self._enhancing
+
+    def _update_enhancing_state(self) -> None:
+        """Update enhancing state based on current mode and brightness EMA.
+        
+        This is exposed for testing; in production it's called from the capture loop.
+        """
+        with self._lock:
+            mode = self._night_vision_mode
+            if mode == "ON":
+                self._enhancing = True
+            elif mode == "AUTO":
+                b = self._brightness_ema
+                if b is not None:
+                    if not self._enhancing and b < self._night_on_below:
+                        self._enhancing = True
+                    elif self._enhancing and b > self._night_off_above:
+                        self._enhancing = False
+            else:  # OFF
+                self._enhancing = False
 
     def set_overlay(self, fn: Callable[[np.ndarray], None] | None) -> None:
         """Set a callback to draw an overlay on the encoded MJPEG frame."""
@@ -331,6 +410,7 @@ class Camera:
 
                     # Frame-diff motion on a half-size image: ~4x cheaper than full-size, and an
                     # 11px blur at half-size matches the old 21px blur at full-size.
+                    # Use RAW frame for motion/brightness computation
                     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                     small = cv2.resize(gray, (320, 240), interpolation=cv2.INTER_AREA)
 
@@ -340,7 +420,29 @@ class Camera:
                             self._mean_brightness = mean_val
                         else:
                             self._mean_brightness = 0.1 * mean_val + 0.9 * self._mean_brightness
+                        # Separate EMA for night vision hysteresis (slightly faster response)
+                        if self._brightness_ema is None:
+                            self._brightness_ema = mean_val
+                        else:
+                            self._brightness_ema = 0.2 * mean_val + 0.8 * self._brightness_ema
                         self._is_live = True
+
+                        # Update night vision enhancing state based on mode
+                        mode = self._night_vision_mode
+                        if mode == "ON":
+                            self._enhancing = True
+                        elif mode == "AUTO":
+                            b = self._brightness_ema
+                            if b is not None:
+                                if not self._enhancing and b < self._night_on_below:
+                                    self._enhancing = True
+                                elif self._enhancing and b > self._night_off_above:
+                                    self._enhancing = False
+                        else:  # OFF
+                            self._enhancing = False
+
+                        enhancing = self._enhancing
+                        brightness_for_enhance = self._brightness_ema
 
                     blurred = cv2.GaussianBlur(small, (11, 11), 0)
 
@@ -367,19 +469,25 @@ class Camera:
                     now_enc = time.monotonic()
                     interval = 1.0 / settings.stream_fps if watching else 1.0
                     ret_enc, enc_jpeg = False, None
+                    encode_frame = frame
                     # Half a camera frame of slack: a frame arriving a hair early must not be
                     # skipped, or a 30 fps camera with a 30 fps target would only encode 15.
                     slack = 0.5 / settings.camera_fps
                     if now_enc - self._last_encode >= interval - slack:
                         self._last_encode = now_enc
                         t_enc = time.perf_counter()
-                        ret_enc, enc_jpeg = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
+                        # Night-vision enhancement applies to the preview only; the Presage and
+                        # face-gate listeners get the raw frame.
+                        encode_frame = frame
+                        if enhancing and brightness_for_enhance is not None:
+                            encode_frame = enhance_low_light(frame, brightness_for_enhance)
+                        ret_enc, enc_jpeg = cv2.imencode(".jpg", encode_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 75])
                         diag.timed("encode", time.perf_counter() - t_enc)
 
                     # Conditionally encode debug frame
                     debug_bytes = b""
                     if ret_enc and overlay_fn is not None and debug_count > 0:
-                        view = frame.copy()
+                        view = encode_frame.copy()
                         try:
                             overlay_fn(view)
                         except Exception:

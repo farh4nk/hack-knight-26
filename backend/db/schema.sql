@@ -1,5 +1,5 @@
 -- ====================================================================
--- CradleEcho Database Schema
+-- Cribby Database Schema
 -- Target: Tiger Data (PostgreSQL + TimescaleDB) or standard PostgreSQL
 -- ====================================================================
 

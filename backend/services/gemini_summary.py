@@ -266,7 +266,7 @@ def fetch_nightly_metrics(
         "session_end": str(session_end),
     }
 
-def generate_morning_brief(metrics: Dict[str, Any], baby_name: str = "Maya") -> Dict[str, Any]:
+def generate_morning_brief(metrics: Dict[str, Any], baby_name: str = "Baby") -> Dict[str, Any]:
     """Sends the aggregated night metrics to Gemini to produce a 3-bullet recap."""
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
@@ -277,7 +277,7 @@ def generate_morning_brief(metrics: Dict[str, Any], baby_name: str = "Maya") -> 
     bedtime = metrics.get("bedtime", "8:00 PM")
     wake_time = metrics.get("wake_time", "7:00 AM")
 
-    prompt = f"""You are the morning sleep summary assistant for CradleEcho, a smart baby monitor.
+    prompt = f"""You are the morning sleep summary assistant for Cribby, a smart baby monitor.
 Analyze the following night's biometric sleep metrics for baby '{baby_name}' based on the parent's scheduled bedtime window ({bedtime} to {wake_time}).
 Provide a reassuring, concise 3-bullet morning report for tired parents.
 
@@ -295,8 +295,8 @@ Provide a reassuring, concise 3-bullet morning report for tired parents.
 1. Safety Rail: State observations clearly without medical or diagnostic claims. Do not mention SIDS or diagnostic conditions.
 2. Tone: Warm, reassuring, calming, and empathetic to tired parents. Acknowledge their scheduled bedtime window ({bedtime} - {wake_time}).
 3. Output format: Exactly 3 bullet points starting with a relevant emoji (e.g. 🌙, 🕊️, 💜).
-- Bullet 1: How well {baby_name} slept during her scheduled {bedtime} to {wake_time} window (e.g., logged {metrics['sleep_hours']} hours of sleep with {metrics['sleep_efficiency_percent']}% sleep efficiency).
-- Bullet 2: Auto-soothe intervention recap (e.g., how the cloned parent voice stepped in when restlessness occurred and settled her back to sleep).
+- Bullet 1: How well {baby_name} slept during their scheduled {bedtime} to {wake_time} window (e.g., logged {metrics['sleep_hours']} hours of sleep with {metrics['sleep_efficiency_percent']}% sleep efficiency).
+- Bullet 2: Auto-soothe intervention recap (e.g., how the cloned parent voice stepped in when restlessness occurred and settled their back to sleep).
 - Bullet 3: Vitals stability reassurance (e.g., breathing remained steady and calm throughout the night at {metrics['avg_brpm']} BrPM).
 
 Output only the 3 bullet points, nothing else.
@@ -320,7 +320,7 @@ Output only the 3 bullet points, nothing else.
     if not response_text:
         # Graceful fallback if API quota or connection issue
         response_text = (
-            f"🌙 {baby_name} slept soundly during her {bedtime} to {wake_time} window, achieving {metrics['sleep_efficiency_percent']}% sleep efficiency ({metrics['sleep_hours']} hrs of sleep).\n"
+            f"🌙 {baby_name} slept soundly during their {bedtime} to {wake_time} window, achieving {metrics['sleep_efficiency_percent']}% sleep efficiency ({metrics['sleep_hours']} hrs of sleep).\n"
             f"🕊️ Auto-soothe gently intervened {metrics['soothe_interventions_count']} times with your voice, guiding restlessness back to sleep in an average of {metrics['avg_soothe_resolve_seconds']} seconds.\n"
             f"💜 Breathing rhythm stayed regular and calm all night, averaging {metrics['avg_brpm']} breaths per minute."
         )
@@ -339,7 +339,7 @@ Output only the 3 bullet points, nothing else.
 
 def answer_nightly_question(
     question: str,
-    baby_name: str = "Maya",
+    baby_name: str = "Baby",
     bedtime: str = "20:00",
     wake_time: str = "07:00"
 ) -> Dict[str, Any]:
@@ -350,7 +350,7 @@ def answer_nightly_question(
     if not api_key:
         return {
             "question": question,
-            "answer": f"Based on the night's telemetry, {baby_name} slept for {metrics['sleep_hours']} hours ({metrics['sleep_efficiency_percent']}% sleep efficiency) during her {bedtime} to {wake_time} window, with steady breathing at {metrics['avg_brpm']} BrPM.",
+            "answer": f"Based on the night's telemetry, {baby_name} slept for {metrics['sleep_hours']} hours ({metrics['sleep_efficiency_percent']}% sleep efficiency) during their {bedtime} to {wake_time} window, with steady breathing at {metrics['avg_brpm']} BrPM.",
             "model_used": "local-telemetry-engine",
             "metrics": metrics
         }
@@ -363,7 +363,7 @@ def answer_nightly_question(
         soothe_summary.append(f"- At {s.get('triggered_at')}: Played '{snippet}', settled successfully.")
     soothe_text = "\n".join(soothe_summary) if soothe_summary else "No interventions needed."
 
-    prompt = f"""You are the pediatric sleep wellness AI assistant for CradleEcho, a smart baby monitor.
+    prompt = f"""You are the pediatric sleep wellness AI assistant for Cribby, a smart baby monitor.
 A parent is asking a question about their infant '{baby_name}'.
 Answer their question directly, warmly, and reassuringly based on the night's real time-series telemetry from Tiger Data.
 

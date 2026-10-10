@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useTelemetry } from "@/context/TelemetryProvider";
-import type { CameraStatus } from "@/lib/types";
+import type { CameraStatus, NightVisionMode } from "@/lib/types";
 import { useDaemonUrl } from "@/lib/useDaemonUrl";
+import { hasSeparateEdge, nightVisionUrl } from "@/lib/config";
 import { StateBadge } from "./StateBadge";
 
 const RETRY_MS = 3000;
@@ -16,6 +17,13 @@ function statusParts(camera: CameraStatus): string[] {
   if (camera.framing === "OK") parts.push("Framing good");
   return parts;
 }
+
+const NIGHT_VISION_MODES: NightVisionMode[] = ["OFF", "AUTO", "ON"];
+const NIGHT_VISION_LABELS: Record<NightVisionMode, string> = {
+  OFF: "Off",
+  AUTO: "Auto",
+  ON: "On",
+};
 
 /** The live feed, framed like a window and lit by the baby's current state. */
 export function CameraWindow() {
@@ -52,6 +60,35 @@ export function CameraWindow() {
     }, RETRY_MS);
     return () => clearTimeout(timer);
   }, [offline]);
+
+  // With a separate edge unit the daemon only sees the edge's stream, so its telemetry can't say
+  // what the edge's night vision is doing: read the mode from the edge itself.
+  const [edgeMode, setEdgeMode] = useState<NightVisionMode | null>(null);
+  useEffect(() => {
+    if (!daemon || !hasSeparateEdge()) return;
+    const load = () =>
+      fetch(nightVisionUrl())
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => j && setEdgeMode(j.mode))
+        .catch(() => {});
+    load();
+    const timer = setInterval(load, 5000);
+    return () => clearInterval(timer);
+  }, [daemon]);
+  const currentMode = (hasSeparateEdge() ? edgeMode : camera?.night_vision) ?? "OFF";
+  const setNightVision = async (mode: NightVisionMode) => {
+    if (!daemon) return;
+    try {
+      const res = await fetch(nightVisionUrl(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode }),
+      });
+      if (res.ok && hasSeparateEdge()) setEdgeMode((await res.json()).mode);
+    } catch {
+      // Non-blocking; daemon will push updated state via telemetry
+    }
+  };
 
   return (
     <section className="flex flex-col gap-3">
@@ -127,7 +164,77 @@ export function CameraWindow() {
             />
           )}
 
-          {cameraOff && (
+          {/* Low-light enhanced indicator */}
+          {camera?.enhancing && !offline && !cameraOff && (
+            <div className="absolute right-3 top-3 z-10">
+              <span className="flex items-center gap-1 rounded-full bg-emerald-500/20 px-2.5 py-1 text-xs text-emerald-300 ring-1 ring-emerald-500/30">
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                Low-light enhanced
+              </span>
+            </div>
+          )}
+
+          {cameraOff && sourceMode === "SIMULATED" && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center select-none">
+              {/* Animated Nursery Soundwave / Breath wave */}
+              <div className="flex items-center justify-center gap-1.5 py-1">
+                {[0.35, 0.6, 0.9, 0.75, 0.5, 0.85, 1.0, 0.7, 0.45, 0.8, 0.95, 0.6, 0.5, 0.75, 0.4, 0.55].map((scale, i) => (
+                  <div
+                    key={i}
+                    className="w-1.5 rounded-full transition-all duration-500 ease-in-out"
+                    style={{
+                      height: `${Math.round(16 + scale * 30)}px`,
+                      backgroundColor: "var(--tone)",
+                      opacity: 0.6 + scale * 0.4,
+                      animation: `pulse ${1.6 + (i % 5) * 0.25}s ease-in-out infinite alternate`,
+                    }}
+                  />
+                ))}
+              </div>
+
+              <div className="flex items-center gap-2 rounded-full bg-tone/15 px-3 py-1 text-xs font-medium text-tone ring-1 ring-tone/30">
+                <span className="h-1.5 w-1.5 rounded-full bg-tone animate-ping" />
+                Synthetic Vitals Active · Camera Off
+              </div>
+
+              <div className="flex flex-col items-center gap-1">
+                <span className="font-display text-2xl text-ink [font-variation-settings:'SOFT'_100]">
+                  Simulated Nursery Monitor
+                </span>
+                <span className="max-w-md text-xs text-ink-dim">
+                  Camera feed is off · Continuous pediatric vitals and sleep cycle simulation stream
+                </span>
+              </div>
+
+              {/* Vitals snapshot */}
+              <div className="flex items-center gap-3 rounded-full bg-black/40 px-4 py-1.5 text-xs text-ink-dim ring-1 ring-white/10 font-mono">
+                <span>
+                  <strong className="text-tone font-semibold">{latest?.vitals.brpm ?? 24}</strong> BrPM
+                </span>
+                <span className="text-white/20">·</span>
+                <span>
+                  <strong className="text-tone font-semibold">{latest?.vitals.bpm ?? 115}</strong> BPM
+                </span>
+                <span className="text-white/20">·</span>
+                <span>
+                  <strong className="text-emerald-400 font-semibold">{Math.round((latest?.vitals.confidence ?? 0.9) * 100)}%</strong> Conf
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={toggleCamera}
+                disabled={toggling}
+                className="mt-1 rounded-full bg-white/10 px-4 py-1.5 text-xs font-medium text-ink ring-1 ring-white/15 transition hover:bg-white/20 disabled:opacity-50"
+              >
+                {toggling ? "Turning on…" : "Turn camera on"}
+              </button>
+            </div>
+          )}
+
+          {cameraOff && sourceMode === "REALTIME" && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
               <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="text-ink-faint" aria-hidden>
                 <path d="M2 2l20 20" />
@@ -199,7 +306,9 @@ export function CameraWindow() {
           </button>
           <span className="flex flex-wrap items-center">
             {cameraOff
-              ? "Presage paused · no credits in use"
+              ? sourceMode === "SIMULATED"
+                ? "Camera off · Synthetic vitals active"
+                : "Presage paused · no credits in use"
               : camera
                 ? statusParts(camera).map((part, i) => (
                     <span key={part} className="flex items-center">
@@ -207,11 +316,29 @@ export function CameraWindow() {
                       {part}
                     </span>
                   ))
-                : " "}
+                : " "}
           </span>
         </div>
         {!cameraOff && (
           <div className="flex items-center gap-3">
+              {/* Night Vision segmented control */}
+              <div className="flex items-center gap-1 rounded-full bg-white/5 p-0.5 ring-1 ring-white/10" role="group" aria-label="Night vision">
+                {NIGHT_VISION_MODES.map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setNightVision(mode)}
+                    aria-pressed={currentMode === mode}
+                    className={`flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs transition ${
+                      currentMode === mode
+                        ? "bg-white/15 text-ink"
+                        : "text-ink-dim hover:text-ink"
+                    }`}
+                  >
+                    {NIGHT_VISION_LABELS[mode]}
+                  </button>
+                ))}
+              </div>
             <button
               type="button"
               onClick={() => setPrivacyBlur((b) => !b)}

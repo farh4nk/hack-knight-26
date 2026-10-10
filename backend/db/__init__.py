@@ -1,1 +1,1 @@
-# Database module for CradleEcho (Dev 4)
+# Database module for Cribby (Dev 4)

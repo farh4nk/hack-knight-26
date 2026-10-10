@@ -20,15 +20,21 @@ export function toneFor(
   state: SleepState | null | undefined,
   offline: boolean,
   cameraEnabled: boolean | undefined = true,
+  mode?: "SIMULATED" | "REALTIME",
 ): Tone {
   if (offline || !state) return "offline";
-  if (cameraEnabled === false) return "paused";
+  if (cameraEnabled === false && mode !== "SIMULATED") return "paused";
   return state === "SIGNAL_UNSTABLE" ? "unstable" : (state.toLowerCase() as Tone);
 }
 
-/** Tone for a telemetry packet (accounts for the camera switch). */
-export function toneOf(t: Telemetry | null | undefined, offline: boolean): Tone {
-  return toneFor(t?.state, offline || !t, t?.camera?.enabled);
+/** Tone for a telemetry packet (accounts for the camera switch and simulation mode). */
+export function toneOf(
+  t: Telemetry | null | undefined,
+  offline: boolean,
+  fallbackMode?: "SIMULATED" | "REALTIME",
+): Tone {
+  const mode = t?.mode ?? fallbackMode;
+  return toneFor(t?.state, offline || !t, t?.camera?.enabled, mode);
 }
 
 // The baby's name is optional. Unnamed copy says "your baby" ("Your baby is sleeping soundly.").
@@ -65,7 +71,7 @@ export function copyFor(tone: Tone, camera?: CameraStatus, name = ""): StateCopy
   }
 }
 
-/** Short log line for a transition ("restless" -> "Maya became restless"). */
+/** Short log line for a transition ("restless" -> "[name] became restless"). */
 export function eventText(tone: Tone, camera?: CameraStatus, prev?: Tone | null, name = ""): string {
   if (tone === "paused") return "Camera turned off";
   if (prev === "paused") return "Camera turned on";

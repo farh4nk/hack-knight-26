@@ -87,3 +87,35 @@ def test_capture_requests_fps_and_never_caps_buffer(monkeypatch):
 
     assert cv2.CAP_PROP_BUFFERSIZE not in set_calls
     assert cv2.CAP_PROP_FPS in set_calls
+
+
+def test_night_vision_enhances_preview_but_not_listener_frames(monkeypatch):
+    """Presage and the face gate must see the raw frame; only the MJPEG preview is enhanced."""
+    import cv2
+
+    class DarkCap(BufferedCap):
+        def read(self):
+            ok, frame = super().read()
+            if ok:
+                frame[:] = 20  # dark, uniform scene so enhancement visibly brightens it
+            return ok, frame
+
+    cap = DarkCap()
+    monkeypatch.setattr("cv2.VideoCapture", lambda x: cap)
+
+    seen: list[float] = []
+    cam = Camera(device="0")
+    cam.set_night_vision_mode("ON")
+    cam.add_frame_listener(lambda f: seen.append(float(f.mean())))
+    cam.start()
+    try:
+        time.sleep(1.5)
+        jpeg = cam.get_latest_frame_jpeg()
+    finally:
+        cam.stop()
+        cap.release()
+
+    assert seen, "listener received no frames"
+    assert max(seen) < 25, "listener frame was enhanced"
+    preview = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
+    assert preview.mean() > 30, "preview was not enhanced"

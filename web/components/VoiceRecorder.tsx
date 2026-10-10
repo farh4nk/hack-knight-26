@@ -70,7 +70,7 @@ export function VoiceRecorder({ onComplete, loading }: VoiceRecorderProps) {
     <div>
       <h2 className="font-display text-xl text-ink [font-variation-settings:'SOFT'_100]">Your voice</h2>
       <p className="mt-3 text-sm leading-relaxed text-ink-dim">
-        Read anything aloud for {RECORD_SECONDS} seconds in a calm, natural tone. CradleEcho uses it to settle{" "}
+        Read anything aloud for {RECORD_SECONDS} seconds in a calm, natural tone. Cribby uses it to settle{" "}
         {babyObject(name)} in your voice before you have to get out of bed.
       </p>
 

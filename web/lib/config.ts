@@ -1,5 +1,5 @@
 // Temporary product name; change it here only.
-export const APP_NAME = "CradleEcho";
+export const APP_NAME = "Cribby";
 
 const DAEMON_PORT = 8000;
 
@@ -28,14 +28,33 @@ export function analyticsUrl(): string {
   return "http://localhost:8001";
 }
 
+/**
+ * Base URL of the edge unit (the Pi that owns the speaker, mic and camera device) when it is a
+ * different machine from the daemon that runs Presage (see docs/presage-compute.md). Unset means
+ * a single box: the edge is the daemon.
+ */
+export function edgeUrl(): string {
+  const fromEnv = process.env.NEXT_PUBLIC_EDGE_URL;
+  return fromEnv ? fromEnv.replace(/\/$/, "") : daemonUrl();
+}
+
+/** True when the edge unit is a different machine from the daemon. */
+export const hasSeparateEdge = () => edgeUrl() !== daemonUrl();
+
 export const wsUrl = () => `${daemonUrl().replace(/^http/, "ws")}/ws/telemetry`;
 export const videoFeedUrl = (debug = false) =>
   // The debug feed has the daemon's face-gate and vitals overlay drawn on it.
   `${daemonUrl()}${debug ? "/video_feed/debug" : "/video_feed"}`;
 export const simulateRestlessUrl = () => `${daemonUrl()}/api/simulate-restless`;
 export const cameraUrl = () => `${daemonUrl()}/api/camera`;
-export const edgeSoothePlayUrl = () => `${daemonUrl()}/api/soothe/play`;
-export const edgeSootheStopUrl = () => `${daemonUrl()}/api/soothe/stop`;
+// Hardware-owned actions go to the edge unit; vitals, state and soothe decisions stay on the daemon.
+export const edgeSoothePlayUrl = () => `${edgeUrl()}/api/soothe/play`;
+export const edgeSootheStopUrl = () => `${edgeUrl()}/api/soothe/stop`;
+
+export const talkWsUrl = () => `${edgeUrl().replace(/^http/, "ws")}/ws/talk`;
+export const listenWsUrl = () => `${edgeUrl().replace(/^http/, "ws")}/ws/listen`;
+export const nightVisionUrl = () => `${edgeUrl()}/api/night-vision`;
+export const audioCapabilitiesUrl = () => `${edgeUrl()}/api/audio/capabilities`;
 
 // Generate telemetry in the browser instead of connecting to the daemon.
 export const MOCK = process.env.NEXT_PUBLIC_MOCK === "1";
