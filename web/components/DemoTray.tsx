@@ -6,7 +6,7 @@ import { SIMULATE_RESTLESS_MS } from "@/lib/config";
 
 /** Presenter tools: force a restless episode, peek at the raw packet. Deliberately understated. */
 export function DemoTray() {
-  const { simulateRestless, latest, mock } = useTelemetry();
+  const { simulateRestless, latest, mock, sourceMode } = useTelemetry();
   const [lockedUntil, setLockedUntil] = useState(0);
   const [now, setNow] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +34,9 @@ export function DemoTray() {
   return (
     <section className="mt-14 border-t border-line pt-6 text-sm text-ink-faint">
       <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
-        <span className="uppercase tracking-[0.14em] text-xs">Demo{mock ? " · mock data" : ""}</span>
+        <span className="uppercase tracking-[0.14em] text-xs">
+          Demo · {sourceMode === "REALTIME" ? "Real-Time Sensor" : mock ? "Browser Mock" : "Daemon Simulation"}
+        </span>
         <button
           type="button"
           onClick={trigger}
