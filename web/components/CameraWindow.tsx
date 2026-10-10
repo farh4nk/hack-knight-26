@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useTelemetry } from "@/context/TelemetryProvider";
-import type { CameraStatus } from "@/lib/types";
+import type { CameraStatus, NightVisionMode } from "@/lib/types";
 import { useDaemonUrl } from "@/lib/useDaemonUrl";
+import { hasSeparateEdge, nightVisionUrl } from "@/lib/config";
 import { StateBadge } from "./StateBadge";
 
 const RETRY_MS = 3000;
@@ -16,6 +17,13 @@ function statusParts(camera: CameraStatus): string[] {
   if (camera.framing === "OK") parts.push("Framing good");
   return parts;
 }
+
+const NIGHT_VISION_MODES: NightVisionMode[] = ["OFF", "AUTO", "ON"];
+const NIGHT_VISION_LABELS: Record<NightVisionMode, string> = {
+  OFF: "Off",
+  AUTO: "Auto",
+  ON: "On",
+};
 
 /** The live feed, framed like a window and lit by the baby's current state. */
 export function CameraWindow() {
@@ -52,6 +60,35 @@ export function CameraWindow() {
     }, RETRY_MS);
     return () => clearTimeout(timer);
   }, [offline]);
+
+  // With a separate edge unit the daemon only sees the edge's stream, so its telemetry can't say
+  // what the edge's night vision is doing: read the mode from the edge itself.
+  const [edgeMode, setEdgeMode] = useState<NightVisionMode | null>(null);
+  useEffect(() => {
+    if (!daemon || !hasSeparateEdge()) return;
+    const load = () =>
+      fetch(nightVisionUrl())
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => j && setEdgeMode(j.mode))
+        .catch(() => {});
+    load();
+    const timer = setInterval(load, 5000);
+    return () => clearInterval(timer);
+  }, [daemon]);
+  const currentMode = (hasSeparateEdge() ? edgeMode : camera?.night_vision) ?? "OFF";
+  const setNightVision = async (mode: NightVisionMode) => {
+    if (!daemon) return;
+    try {
+      const res = await fetch(nightVisionUrl(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode }),
+      });
+      if (res.ok && hasSeparateEdge()) setEdgeMode((await res.json()).mode);
+    } catch {
+      // Non-blocking; daemon will push updated state via telemetry
+    }
+  };
 
   return (
     <section className="flex flex-col gap-3">
@@ -125,6 +162,18 @@ export function CameraWindow() {
               }}
               onError={() => setOffline(true)}
             />
+          )}
+
+          {/* Low-light enhanced indicator */}
+          {camera?.enhancing && !offline && !cameraOff && (
+            <div className="absolute right-3 top-3 z-10">
+              <span className="flex items-center gap-1 rounded-full bg-emerald-500/20 px-2.5 py-1 text-xs text-emerald-300 ring-1 ring-emerald-500/30">
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                Low-light enhanced
+              </span>
+            </div>
           )}
 
           {cameraOff && (
@@ -212,6 +261,24 @@ export function CameraWindow() {
         </div>
         {!cameraOff && (
           <div className="flex items-center gap-3">
+              {/* Night Vision segmented control */}
+              <div className="flex items-center gap-1 rounded-full bg-white/5 p-0.5 ring-1 ring-white/10" role="group" aria-label="Night vision">
+                {NIGHT_VISION_MODES.map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setNightVision(mode)}
+                    aria-pressed={currentMode === mode}
+                    className={`flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs transition ${
+                      currentMode === mode
+                        ? "bg-white/15 text-ink"
+                        : "text-ink-dim hover:text-ink"
+                    }`}
+                  >
+                    {NIGHT_VISION_LABELS[mode]}
+                  </button>
+                ))}
+              </div>
             <button
               type="button"
               onClick={() => setPrivacyBlur((b) => !b)}

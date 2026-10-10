@@ -23,13 +23,17 @@ export type CameraFraming =
   | "NO_CHEST_ROOM"
   | "UNKNOWN";
 
+export type NightVisionMode = "OFF" | "AUTO" | "ON";
+
 export interface CameraStatus {
   enabled?: boolean; // false = the user switched the camera off (older daemons omit it)
   live: boolean; // false = daemon is serving a synthetic fallback feed
   gate: CameraGate; // OPEN = Presage session running
   framing: CameraFraming;
-  sdk_code: string | null; // latest Presage validation code, e.g. "kFaceTooLow"
-  sdk_hint: string | null; // human-readable fix, e.g. "Move up, or tilt the camera down."
+  sdk_code: string | null;
+  sdk_hint: string | null;
+  night_vision?: NightVisionMode;
+  enhancing?: boolean;
 }
 
 export interface Telemetry {

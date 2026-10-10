@@ -21,6 +21,8 @@ from cradleecho.sources.mock import MockVitalsSource
 from cradleecho.audio import edge_player
 from cradleecho.sources.presage import PresageVitalsSource
 from cradleecho.telemetry import TelemetryHub
+from cradleecho.talkback import TalkbackManager, handle_talkback_ws, TalkbackConfig
+from cradleecho.listen import ListenHub, handle_listen_ws, ListenConfig
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("cradleecho")
@@ -37,6 +39,10 @@ class CameraToggleRequest(BaseModel):
 class PlaySootheRequest(BaseModel):
     audio_base64: str | None = None
     phrase: str | None = None
+
+
+class NightVisionModeRequest(BaseModel):
+    mode: str = Field(pattern="^(OFF|AUTO|ON)$")
 
 
 def build_source() -> VitalsSource:
@@ -91,6 +97,8 @@ def create_app(
     camera: Camera | None = None,
     source: VitalsSource | None = None,
     classifier: SleepStateClassifier | None = None,
+    talkback_manager: TalkbackManager | None = None,
+    listen_hub: ListenHub | None = None,
 ) -> FastAPI:
     cam = camera or Camera()
     clsf = classifier or SleepStateClassifier()
@@ -117,6 +125,10 @@ def create_app(
         initial_src = mock_src
 
     hub = TelemetryHub(cam, initial_src, clsf, interval_s=0.5)
+
+    # Talkback & Listen
+    tb_manager = talkback_manager or TalkbackManager()
+    lh = listen_hub or ListenHub()
 
     from cradleecho.overlay import draw_vitals_panel
     def _composite_overlay(frame):
@@ -154,6 +166,7 @@ def create_app(
         await presage_src.stop()
         await mock_src.stop()
         cam.stop()
+        await lh.stop()
 
     app = FastAPI(title="Cribby Edge Daemon", lifespan=lifespan)
 
@@ -176,6 +189,8 @@ def create_app(
     app.state.hub = hub
     app.state.source_name = "presage" if isinstance(initial_src, PresageVitalsSource) else "mock"
     app.state.revert_task = None
+    app.state.talkback_manager = tb_manager
+    app.state.listen_hub = lh
 
     @app.get("/healthz")
     async def healthz():
@@ -328,6 +343,42 @@ def create_app(
             pass
         finally:
             hub.disconnect(websocket)
+
+    # Talkback: parent -> Pi speaker
+    @app.websocket("/ws/talk")
+    async def ws_talk(websocket: WebSocket):
+        await handle_talkback_ws(tb_manager, websocket)
+
+    # Listen: Pi mic -> browser
+    @app.websocket("/ws/listen")
+    async def ws_listen(websocket: WebSocket):
+        await handle_listen_ws(lh, websocket)
+
+    # Night vision control
+    @app.get("/api/night-vision")
+    async def get_night_vision():
+        cam_obj: Camera = app.state.camera
+        return {
+            "mode": cam_obj.get_night_vision_mode(),
+            "active": cam_obj.is_enhancing(),
+        }
+
+    @app.post("/api/night-vision")
+    async def set_night_vision(req: NightVisionModeRequest):
+        cam_obj: Camera = app.state.camera
+        cam_obj.set_night_vision_mode(req.mode)
+        return {
+            "mode": cam_obj.get_night_vision_mode(),
+            "active": cam_obj.is_enhancing(),
+        }
+
+    # Audio capabilities
+    @app.get("/api/audio/capabilities")
+    async def audio_capabilities():
+        import shutil
+        talk = shutil.which("aplay") is not None or shutil.which("ffplay") is not None
+        listen = settings.listen_enabled and shutil.which("arecord") is not None
+        return {"talk": talk, "listen": listen}
 
     return app
 
