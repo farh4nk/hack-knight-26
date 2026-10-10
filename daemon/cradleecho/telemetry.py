@@ -11,6 +11,7 @@ from fastapi import WebSocket
 from cradleecho.camera import Camera
 from cradleecho.classifier import SleepStateClassifier
 from cradleecho.sources.base import Reading, VitalsSource
+from cradleecho.sources.mock import MockVitalsSource
 
 logger = logging.getLogger(__name__)
 
@@ -171,17 +172,23 @@ class TelemetryHub:
             motion = self.camera.get_motion_index()
 
         cam_enabled = getattr(self.camera, "is_enabled", lambda: True)()
+        is_mock = isinstance(self.source, MockVitalsSource)
         if not cam_enabled:
-            # Camera off: report no readings (the mock source would otherwise keep inventing them).
-            reading = Reading(brpm=0.0, bpm=0.0, confidence=0.0, motion_index=0.0, timestamp=reading.timestamp)
-            motion = 0.0
+            if not is_mock:
+                # Camera off and real sensor: report no readings (Presage is paused, no video)
+                reading = Reading(brpm=0.0, bpm=0.0, confidence=0.0, motion_index=0.0, timestamp=reading.timestamp)
+                motion = 0.0
+            else:
+                # Camera off in simulated mode: synthetic vitals continue flowing!
+                if motion is None or motion == 0.0:
+                    motion = reading.motion_index if reading.motion_index is not None else 0.05
 
         forced = time.time() < self._forced_unstable_until
         cam_live = getattr(self.camera, "is_live", lambda: False)()
         cam_brightness = getattr(self.camera, "get_brightness", lambda: None)()
-        gate = cam_live and cam_brightness is not None and cam_brightness < settings.min_brightness
-        
-        reading_confidence = 0.0 if forced or gate else reading.confidence
+        gate = (not is_mock) and cam_live and cam_brightness is not None and cam_brightness < settings.min_brightness
+
+        reading_confidence = 0.0 if (forced or gate) else reading.confidence
 
         reading_with_motion = Reading(
             brpm=reading.brpm,

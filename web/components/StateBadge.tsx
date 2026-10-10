@@ -5,8 +5,8 @@ import { copyFor, toneOf } from "@/lib/stateCopy";
 
 /** Glass pill on the video: the live state at a glance. */
 export function StateBadge() {
-  const { latest, connected, stale } = useTelemetry();
-  const tone = toneOf(latest, !connected || stale);
+  const { latest, connected, stale, sourceMode } = useTelemetry();
+  const tone = toneOf(latest, !connected || stale, sourceMode);
   const { pill } = copyFor(tone, latest?.camera); // the pill never contains the name
 
   return (

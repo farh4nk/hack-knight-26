@@ -127,7 +127,65 @@ export function CameraWindow() {
             />
           )}
 
-          {cameraOff && (
+          {cameraOff && sourceMode === "SIMULATED" && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center select-none">
+              {/* Animated Nursery Soundwave / Breath wave */}
+              <div className="flex items-center justify-center gap-1.5 py-1">
+                {[0.35, 0.6, 0.9, 0.75, 0.5, 0.85, 1.0, 0.7, 0.45, 0.8, 0.95, 0.6, 0.5, 0.75, 0.4, 0.55].map((scale, i) => (
+                  <div
+                    key={i}
+                    className="w-1.5 rounded-full transition-all duration-500 ease-in-out"
+                    style={{
+                      height: `${Math.round(16 + scale * 30)}px`,
+                      backgroundColor: "var(--tone)",
+                      opacity: 0.6 + scale * 0.4,
+                      animation: `pulse ${1.6 + (i % 5) * 0.25}s ease-in-out infinite alternate`,
+                    }}
+                  />
+                ))}
+              </div>
+
+              <div className="flex items-center gap-2 rounded-full bg-tone/15 px-3 py-1 text-xs font-medium text-tone ring-1 ring-tone/30">
+                <span className="h-1.5 w-1.5 rounded-full bg-tone animate-ping" />
+                Synthetic Vitals Active · Camera Off
+              </div>
+
+              <div className="flex flex-col items-center gap-1">
+                <span className="font-display text-2xl text-ink [font-variation-settings:'SOFT'_100]">
+                  Simulated Nursery Monitor
+                </span>
+                <span className="max-w-md text-xs text-ink-dim">
+                  Camera feed is off · Continuous pediatric vitals and sleep cycle simulation stream
+                </span>
+              </div>
+
+              {/* Vitals snapshot */}
+              <div className="flex items-center gap-3 rounded-full bg-black/40 px-4 py-1.5 text-xs text-ink-dim ring-1 ring-white/10 font-mono">
+                <span>
+                  <strong className="text-tone font-semibold">{latest?.vitals.brpm ?? 24}</strong> BrPM
+                </span>
+                <span className="text-white/20">·</span>
+                <span>
+                  <strong className="text-tone font-semibold">{latest?.vitals.bpm ?? 115}</strong> BPM
+                </span>
+                <span className="text-white/20">·</span>
+                <span>
+                  <strong className="text-emerald-400 font-semibold">{Math.round((latest?.vitals.confidence ?? 0.9) * 100)}%</strong> Conf
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={toggleCamera}
+                disabled={toggling}
+                className="mt-1 rounded-full bg-white/10 px-4 py-1.5 text-xs font-medium text-ink ring-1 ring-white/15 transition hover:bg-white/20 disabled:opacity-50"
+              >
+                {toggling ? "Turning on…" : "Turn camera on"}
+              </button>
+            </div>
+          )}
+
+          {cameraOff && sourceMode === "REALTIME" && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
               <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="text-ink-faint" aria-hidden>
                 <path d="M2 2l20 20" />
@@ -199,7 +257,9 @@ export function CameraWindow() {
           </button>
           <span className="flex flex-wrap items-center">
             {cameraOff
-              ? "Presage paused · no credits in use"
+              ? sourceMode === "SIMULATED"
+                ? "Camera off · Synthetic vitals active"
+                : "Presage paused · no credits in use"
               : camera
                 ? statusParts(camera).map((part, i) => (
                     <span key={part} className="flex items-center">
@@ -207,7 +267,7 @@ export function CameraWindow() {
                       {part}
                     </span>
                   ))
-                : " "}
+                : " "}
           </span>
         </div>
         {!cameraOff && (

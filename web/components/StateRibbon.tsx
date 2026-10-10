@@ -5,11 +5,11 @@ import { TONE_HEX, toneOf, type Tone } from "@/lib/stateCopy";
 
 /** The last minute as a colored band: how the state has moved. */
 export function StateRibbon() {
-  const { history } = useTelemetry();
+  const { history, sourceMode } = useTelemetry();
 
   const runs: { tone: Tone; count: number }[] = [];
   for (const t of history) {
-    const tone = toneOf(t, false);
+    const tone = toneOf(t, false, sourceMode);
     const last = runs[runs.length - 1];
     if (last && last.tone === tone) last.count++;
     else runs.push({ tone, count: 1 });
