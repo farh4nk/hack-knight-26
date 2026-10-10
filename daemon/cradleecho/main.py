@@ -1,4 +1,4 @@
-"""CradleEcho Edge Daemon FastAPI application."""
+"""Cribby Edge Daemon FastAPI application."""
 
 import asyncio
 import logging
@@ -153,7 +153,7 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        logger.info("Starting CradleEcho daemon services...")
+        logger.info("Starting Cribby daemon services...")
         diag.start()
         cam.start()
         await mock_src.start()
@@ -167,14 +167,14 @@ def create_app(
             # Actually, we just need to ensure the recorder can start on first real subscriber
             pass
         yield
-        logger.info("Shutting down CradleEcho daemon services...")
+        logger.info("Shutting down Cribby daemon services...")
         await hub.stop()
         await presage_src.stop()
         await mock_src.stop()
         cam.stop()
         await lh.stop()
 
-    app = FastAPI(title="CradleEcho Edge Daemon", lifespan=lifespan)
+    app = FastAPI(title="Cribby Edge Daemon", lifespan=lifespan)
 
     # CORS configuration
     origins = [orig.strip() for orig in settings.cors_origins.split(",") if orig.strip()]

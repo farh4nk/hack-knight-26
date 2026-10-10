@@ -1,5 +1,5 @@
 // Temporary product name; change it here only.
-export const APP_NAME = "CradleEcho";
+export const APP_NAME = "Cribby";
 
 const DAEMON_PORT = 8000;
 

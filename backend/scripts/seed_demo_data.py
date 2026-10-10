@@ -1,5 +1,5 @@
 """
-Realistic overnight demo data seeder for CradleEcho (Dev 4).
+Realistic overnight demo data seeder for Cribby (Dev 4).
 Populates baby_vitals and soothe_events with an 8-hour sleep session
 (e.g., 10:00 PM to 6:00 AM) including:
 - Baseline calm sleep (22-26 BrPM, 105-115 BPM)
@@ -29,13 +29,13 @@ def generate_night_data(bedtime: str = "20:00", wake_time: str = "07:00"):
         {
             "triggered_at": restless_1_start.isoformat(),
             "resolved_at": restless_1_resolve.isoformat(),
-            "voice_snippet_used": "Shh, you're safe, go back to sleep Maya.",
+            "voice_snippet_used": "Shhh.",
             "was_successful": True,
         },
         {
             "triggered_at": restless_2_start.isoformat(),
             "resolved_at": restless_2_resolve.isoformat(),
-            "voice_snippet_used": "Mommy and daddy are right here, sweet dreams.",
+            "voice_snippet_used": "Go to sleep.",
             "was_successful": True,
         }
     ]

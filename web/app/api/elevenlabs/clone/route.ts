@@ -6,7 +6,7 @@ export async function POST(req: Request) {
   const apiKey = process.env.ELEVENLABS_API_KEY;
 
   const url = new URL(req.url);
-  const name = url.searchParams.get("name") || "CradleEcho Parent";
+  const name = url.searchParams.get("name") || "Cribby Parent";
 
   const audioBlob = await req.blob();
   if (!audioBlob || audioBlob.size === 0) {
@@ -16,7 +16,7 @@ export async function POST(req: Request) {
   // If no API key configured, provide mock voice_id for local testing
   if (!apiKey || apiKey === "your_elevenlabs_api_key_here") {
     console.warn("[ElevenLabs API] No ELEVENLABS_API_KEY provided. Using mock voice_id.");
-    return NextResponse.json({ voice_id: "mock_parent_voice_maya" });
+    return NextResponse.json({ voice_id: "mock_parent_voice" });
   }
 
   const formData = new FormData();
