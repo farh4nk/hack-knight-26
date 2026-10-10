@@ -1,16 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import { analyticsUrl, BABY_NAME } from "@/lib/config";
+import { babyObject, babyTitle, getBabyName, useBabyName } from "@/lib/babyName";
+import { analyticsUrl } from "@/lib/config";
 
-const SUGGESTED_QUESTIONS = [
-  `How was ${BABY_NAME} resting around 3 AM?`,
-  `How steady was ${BABY_NAME}’s breathing overnight?`,
-  `Did the auto-soothe voice settle her quickly?`,
-  `How does her sleep compare to normal infant baselines?`,
+const suggestedQuestions = (name: string) => [
+  `How was ${babyObject(name)} resting around 3 AM?`,
+  `How steady was ${babyObject(name)}’s breathing overnight?`,
+  `Did the auto-soothe voice settle ${babyObject(name)} quickly?`,
+  `How does ${babyObject(name)}’s sleep compare to normal infant baselines?`,
 ];
 
-export function GeminiNightQA() {
+interface GeminiNightQAProps {
+  bedtime?: string;
+  wakeTime?: string;
+}
+
+export function GeminiNightQA({ bedtime = "20:00", wakeTime = "07:00" }: GeminiNightQAProps) {
+  const name = useBabyName() ?? "";
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<string | null>(null);
   const [modelUsed, setModelUsed] = useState<string | null>(null);
@@ -29,7 +36,12 @@ export function GeminiNightQA() {
       const res = await fetch(`${analyticsUrl()}/api/nightly-qa`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: q, baby_name: BABY_NAME }),
+        body: JSON.stringify({
+          question: q,
+          baby_name: babyTitle(getBabyName()),
+          bedtime,
+          wake_time: wakeTime,
+        }),
       });
 
       if (!res.ok) throw new Error("Could not reach Gemini sleep assistant");
@@ -56,19 +68,19 @@ export function GeminiNightQA() {
             />
           </svg>
           <h2 className="font-display text-2xl text-ink [font-variation-settings:'SOFT'_100]">
-            Ask Gemini About {BABY_NAME}’s Night
+            Ask Gemini About {babyTitle(name)}’s Night
           </h2>
         </div>
         <span className="text-xs text-ink-faint">Interactive Sleep Intelligence</span>
       </div>
 
       <p className="mt-2 text-sm text-ink-dim">
-        Ask anything about {BABY_NAME}’s vital signs, restlessness episodes, or sleep depth. Gemini analyzes the full night’s Timescale telemetry to answer.
+        Ask anything about {babyObject(name)}’s vital signs, restlessness episodes, or sleep depth. Gemini analyzes the full night’s Timescale telemetry to answer.
       </p>
 
       {/* Suggested question chips */}
       <div className="mt-5 flex flex-wrap gap-2">
-        {SUGGESTED_QUESTIONS.map((sq, idx) => (
+        {suggestedQuestions(name).map((sq, idx) => (
           <button
             key={idx}
             type="button"
@@ -96,7 +108,7 @@ export function GeminiNightQA() {
           type="text"
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
-          placeholder={`e.g. Was Maya breathing calmly during her 2 AM sleep cycle?`}
+          placeholder={`e.g. Was ${babyObject(name)} breathing calmly during the 2 AM sleep cycle?`}
           className="min-w-0 flex-1 rounded-2xl bg-white/5 px-4 py-3 text-sm text-ink placeholder:text-ink-faint ring-1 ring-white/10 focus:outline-none focus:ring-tone/50"
         />
         <button

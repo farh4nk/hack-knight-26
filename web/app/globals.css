@@ -34,6 +34,7 @@
 .night[data-state="awake"] { --tone: #ef8a76; --tone-soft: rgba(239, 138, 118, 0.2); }
 .night[data-state="unstable"] { --tone: #7d8597; --tone-soft: rgba(125, 133, 151, 0.16); }
 .night[data-state="offline"] { --tone: #4b5163; --tone-soft: rgba(75, 81, 99, 0.14); }
+.night[data-state="paused"] { --tone: #8a8f9c; --tone-soft: rgba(138, 143, 156, 0.12); }
 
 .night-glow {
   background:

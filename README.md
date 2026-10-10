@@ -1,4 +1,4 @@
-# CradleEcho
+# Cribby
 
 > Real-time infant wellness monitor with non-contact vitals, ElevenLabs cloned-voice auto-soothing, Tiger Data storage, and Gemini morning summaries.
 
@@ -48,4 +48,4 @@ python -m backend.scripts.seed_demo_data
 ---
 
 ## 🛡️ Safety
-CradleEcho is an informational wellness monitor, not a medical or SIDS-prevention device. Biometrics are derived locally; video is never persisted.
+Cribby is an informational wellness monitor, not a medical or SIDS-prevention device. Biometrics are derived locally; video is never persisted.

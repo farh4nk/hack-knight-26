@@ -51,6 +51,9 @@ if command -v v4l2-ctl >/dev/null 2>&1; then
   done
   if [[ -n "$VIDEO_DEV" ]]; then
     ok "USB camera capture node: $VIDEO_DEV"
+    if v4l2-ctl -d "$VIDEO_DEV" --get-ctrl=exposure_dynamic_framerate 2>/dev/null | grep -q ": 1"; then
+      warn "camera may drop below 25 fps in dim light (Presage needs >= 25). Fix: v4l2-ctl -d $VIDEO_DEV --set-ctrl=exposure_dynamic_framerate=0 (resets when the camera is replugged)"
+    fi
   else
     bad "no USB webcam found. Is the Logitech plugged in? Output of v4l2-ctl --list-devices:"
     v4l2-ctl --list-devices 2>&1 | sed 's/^/        /'
@@ -94,15 +97,22 @@ if [[ $WRITE -eq 1 ]]; then
     [[ -n "$RENDER_GID" ]] && echo "RENDER_GID=$RENDER_GID"
     [[ -n "$AUDIO_GID" ]] && echo "AUDIO_GID=$AUDIO_GID"
     echo "SITE_HOST=${HOSTNAME_CLEAN}.local"
-  } > .env
+    # Keep settings this script does not manage (e.g. CRADLEECHO_SOURCE=mock, CRADLEECHO_STREAM_FPS).
+    if [[ -f .env ]]; then
+      grep -vE '^(CRADLEECHO_VIDEO_DEVICE|VIDEO_GID|RENDER_GID|AUDIO_GID|SITE_HOST)=' .env || true
+    fi
+  } > .env.new && mv .env.new .env
   echo "Wrote .env:"; sed 's/^/        /' .env
 fi
 
 echo
 echo "Open from another device on this network:"
+# Real network addresses only: skip Docker's internal bridges and link-local IPv6.
+ADDRS=$(ip -o addr show scope global 2>/dev/null | awk '$2 !~ /^(docker|br-|veth)/ {split($4, a, "/"); print a[1]}')
 echo "  https://$(hostname | sed "s/\.local$//").local/   (HTTPS via Caddy — pair first at http://<host>/pair)"
 echo "  http://$(hostname | sed "s/\.local$//").local/pair   (pairing page: download CA cert & install)"
-for ip in $(hostname -I 2>/dev/null); do
+for ip in $ADDRS; do
+  if [[ "$ip" == *:* ]]; then ip="[$ip]"; fi
   echo "  https://$ip/   (HTTPS via Caddy)"
   echo "  http://$ip/pair   (pairing page)"
 done
@@ -111,11 +121,10 @@ echo "Plain-HTTP debug ports (still available):"
 echo "  http://$(hostname | sed "s/\.local$//").local:3000   (web UI)"
 echo "  http://$(hostname | sed "s/\.local$//").local:8000   (daemon API / video feed)"
 echo "  http://$(hostname | sed "s/\.local$//").local:8001   (analytics API)"
-for ip in $(hostname -I 2>/dev/null); do
-  echo "  http://$ip:3000   (web UI)"
-  echo "  http://$ip:8000   (daemon API / video feed)"
-  echo "  http://$ip:8001   (analytics API)"
+for ip in $ADDRS; do
+  if [[ "$ip" == *:* ]]; then echo "  http://[$ip]:3000   (web UI)"; else echo "  http://$ip:3000   (web UI)"; fi
 done
+echo "  (If .local is slow from your Mac, run deploy/pi/find_pi.sh there: see docs/pi-setup.md.)"
 echo
 echo "$FAILS failed, $WARNS warnings"
 [[ $FAILS -eq 0 ]]

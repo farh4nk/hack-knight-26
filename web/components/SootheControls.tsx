@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { SootheEngine, SootheSnapshot } from "@/lib/audio/soothe-engine";
 import { synthesize } from "@/lib/audio/elevenlabs";
+import { babyObject, useBabyName } from "@/lib/babyName";
 import { edgeSoothePlayUrl } from "@/lib/config";
 
 interface SootheControlsProps {
@@ -23,6 +24,7 @@ export function SootheControls({ engine, snapshot, voiceId, onChangeVoice }: Soo
   const [now, setNow] = useState(() => Date.now());
   const [customText, setCustomText] = useState("");
   const [talking, setTalking] = useState(false);
+  const name = useBabyName() ?? "";
 
   const locked = snapshot.cooldownUntil > now;
   const active = snapshot.status === "soothing" || snapshot.status === "fading";
@@ -108,7 +110,7 @@ export function SootheControls({ engine, snapshot, voiceId, onChangeVoice }: Soo
 
       <div className="mt-6 border-t border-line pt-5">
         <label htmlFor="talk" className="text-sm text-ink-dim">
-          Say something to Maya, in your voice
+          Say something to {babyObject(name)}, in your voice
         </label>
         <div className="mt-2 flex gap-2">
           <input

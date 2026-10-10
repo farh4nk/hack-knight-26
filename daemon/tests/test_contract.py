@@ -23,7 +23,7 @@ def test_contract_format_telemetry_payload():
     
     assert set(payload.keys()) == {"timestamp", "state", "vitals", "motion_index", "camera"}
     assert set(payload["vitals"].keys()) == {"brpm", "bpm", "confidence"}
-    assert set(payload["camera"].keys()) == {"live", "gate", "framing", "sdk_code", "sdk_hint", "night_vision", "enhancing"}
+    assert set(payload["camera"].keys()) == {"enabled", "live", "gate", "framing", "sdk_code", "sdk_hint", "night_vision", "enhancing"}
     
     assert re.match(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$", payload["timestamp"])
     assert payload["state"] in VALID_STATES
@@ -47,7 +47,7 @@ def test_contract_api_state_mock():
         
         assert set(payload.keys()) == {"timestamp", "state", "vitals", "motion_index", "camera"}
         assert set(payload["vitals"].keys()) == {"brpm", "bpm", "confidence"}
-        assert set(payload["camera"].keys()) == {"live", "gate", "framing", "sdk_code", "sdk_hint", "night_vision", "enhancing"}
+        assert set(payload["camera"].keys()) == {"enabled", "live", "gate", "framing", "sdk_code", "sdk_hint", "night_vision", "enhancing"}
         assert re.match(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$", payload["timestamp"])
         assert payload["state"] in VALID_STATES
         assert payload["camera"]["live"] is False
@@ -84,7 +84,7 @@ def test_contract_api_state_stale_presage():
         
         assert set(payload.keys()) == {"timestamp", "state", "vitals", "motion_index", "camera"}
         assert set(payload["vitals"].keys()) == {"brpm", "bpm", "confidence"}
-        assert set(payload["camera"].keys()) == {"live", "gate", "framing", "sdk_code", "sdk_hint", "night_vision", "enhancing"}
+        assert set(payload["camera"].keys()) == {"enabled", "live", "gate", "framing", "sdk_code", "sdk_hint", "night_vision", "enhancing"}
         assert re.match(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$", payload["timestamp"])
         assert payload["state"] in VALID_STATES
         assert payload["camera"]["sdk_code"] is None

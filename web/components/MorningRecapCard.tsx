@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { babyTitle, getBabyName } from "@/lib/babyName";
 import { analyticsUrl } from "@/lib/config";
 
 
@@ -26,7 +27,7 @@ export function MorningRecapCard() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${analyticsUrl()}/api/nightly-summary?baby_name=Maya`);
+      const res = await fetch(`${analyticsUrl()}/api/nightly-summary?baby_name=${encodeURIComponent(babyTitle(getBabyName()))}`);
       if (!res.ok) throw new Error("Could not load summary");
       const json = await res.json();
       setData(json);
@@ -44,7 +45,7 @@ setError("Tiger Data / Gemini service currently offline");
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`${analyticsUrl()}/api/nightly-summary?baby_name=Maya`);
+        const res = await fetch(`${analyticsUrl()}/api/nightly-summary?baby_name=${encodeURIComponent(babyTitle(getBabyName()))}`);
         if (!res.ok) throw new Error("Could not load summary");
         const json = await res.json();
         if (!cancelled) setData(json);

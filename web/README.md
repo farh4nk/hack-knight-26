@@ -39,3 +39,8 @@ const { latest, history, connected, stale, simulateRestless } = useTelemetry();
 ```
 
 The provider is already mounted in `app/layout.tsx`, so any client component can call the hook.
+
+## Baby's name and the camera switch
+
+- **Name:** optional, stored in this browser (`localStorage`, see `lib/babyName.ts`). A first-run prompt asks for it and the header chip edits it. Unnamed copy says "your baby". The name is used in the headline, activity log, auto-soothe messages, the Gemini recap/Q&A, and the first cloned-voice phrase (those phrases are re-rendered when the name changes). It is per browser, so a second device asks again.
+- **Camera switch:** the "Camera" switch under the video calls `POST /api/camera`. Off releases the camera and ends the Presage session (no credits used), shows a paused state, and stops requesting the video stream. Mock mode (`NEXT_PUBLIC_MOCK=1`) supports it too.

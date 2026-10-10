@@ -73,6 +73,7 @@ let nightVisionModeIndex = 0;
 export interface MockTelemetrySource {
   stop: () => void;
   simulateRestless: () => void;
+  setCameraEnabled: (enabled: boolean) => void;
 }
 
 export function startMockTelemetry(
@@ -81,6 +82,7 @@ export function startMockTelemetry(
   const startedAt = Date.now();
   const cycleSeconds = SCRIPT.reduce((sum, s) => sum + s.seconds, 0);
   let restlessUntil = 0;
+  let cameraOn = true;
 
   const scriptedState = (): SleepState => {
     let t = ((Date.now() - startedAt) / 1000) % cycleSeconds;
@@ -99,13 +101,18 @@ export function startMockTelemetry(
     onMessage({
       timestamp: new Date().toISOString(),
       state,
+      mode: "SIMULATED",
       vitals: {
         brpm: Math.max(0, Number(jitter(p.brpm, 1.5).toFixed(1))),
         bpm: Math.max(0, Math.round(jitter(p.bpm, 4))),
         confidence: Number(jitter(p.confidence, 0.05).toFixed(2)),
       },
       motion_index: Number(Math.max(0, jitter(p.motion, 0.05)).toFixed(2)),
-      camera: CAMERA[state][mode],
+      camera: {
+        ...CAMERA[state][mode],
+        enabled: cameraOn,
+        live: cameraOn,
+      },
     });
   }, 1000 / TELEMETRY_HZ);
 
@@ -113,6 +120,9 @@ export function startMockTelemetry(
     stop: () => clearInterval(timer),
     simulateRestless: () => {
       restlessUntil = Date.now() + SIMULATE_RESTLESS_MS;
+    },
+    setCameraEnabled: (enabled) => {
+      cameraOn = enabled;
     },
   };
 }

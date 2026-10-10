@@ -14,5 +14,5 @@ def get_lan_ip():
 
 if __name__ == "__main__":
     ip = get_lan_ip()
-    print(f"Starting CradleEcho daemon on http://{ip}:{settings.port}")
+    print(f"Starting Cribby daemon on http://{ip}:{settings.port}")
     uvicorn.run("cradleecho.main:app", host=settings.host, port=settings.port)

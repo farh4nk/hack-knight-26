@@ -128,7 +128,7 @@
 <body>
 	<div class="container">
 		<h1>Pair this device</h1>
-		<p class="subtitle">Install the local certificate so your browser trusts CradleEcho on this network.</p>
+		<p class="subtitle">Install the local certificate so your browser trusts Cribby on this network.</p>
 
 		<div class="card">
 			<h2>⬇ Step 1 — Download the certificate</h2>
@@ -149,22 +149,22 @@
 			</div>
 
 			<div class="platform-content active" data-platform="ios" role="tabpanel">
-				<div class="step"><strong>1.</strong> Open <strong>Settings</strong> → tap <strong>Profile Downloaded</strong> (or General → VPN & Device Management) → tap the CradleEcho profile → <strong>Install</strong>.</div>
+				<div class="step"><strong>1.</strong> Open <strong>Settings</strong> → tap <strong>Profile Downloaded</strong> (or General → VPN & Device Management) → tap the Cribby profile → <strong>Install</strong>.</div>
 				<div class="step"><strong>2.</strong> Go to <strong>Settings → General → About → Certificate Trust Settings</strong>.</div>
-				<div class="step"><strong>3.</strong> Under "Enable Full Trust for Root Certificates", find the CradleEcho CA and toggle it <strong>ON</strong>. Confirm the warning.</div>
+				<div class="step"><strong>3.</strong> Under "Enable Full Trust for Root Certificates", find the Cribby CA and toggle it <strong>ON</strong>. Confirm the warning.</div>
 			</div>
 
 			<div class="platform-content" data-platform="android" role="tabpanel">
 				<div class="step"><strong>1.</strong> Open <strong>Settings → Security & privacy → More security settings → Install certificates → CA certificate</strong> (path may vary by Android version).</div>
 				<div class="step"><strong>2.</strong> When prompted, allow the Settings app to install certificates if needed.</div>
-				<div class="step"><strong>3.</strong> Select the downloaded <code>ca.crt</code> file. Name it "CradleEcho" and confirm.</div>
+				<div class="step"><strong>3.</strong> Select the downloaded <code>ca.crt</code> file. Name it "Cribby" and confirm.</div>
 				<div class="step"><strong>4.</strong> Some Android versions require a lock screen (PIN/pattern) to install a CA cert.</div>
 			</div>
 
 			<div class="platform-content" data-platform="macos" role="tabpanel">
 				<div class="step"><strong>1.</strong> Open <strong>Keychain Access</strong> (Cmd+Space, type "Keychain").</div>
 				<div class="step"><strong>2.</strong> Drag <code>ca.crt</code> into the <strong>System</strong> keychain (or login keychain). Enter your admin password.</div>
-				<div class="step"><strong>3.</strong> Double-click the imported "CradleEcho" certificate → expand <strong>Trust</strong> → set "When using this certificate" to <strong>Always Trust</strong>.</div>
+				<div class="step"><strong>3.</strong> Double-click the imported "Cribby" certificate → expand <strong>Trust</strong> → set "When using this certificate" to <strong>Always Trust</strong>.</div>
 			</div>
 
 			<div class="platform-content" data-platform="windows" role="tabpanel">
@@ -182,10 +182,10 @@
 		</div>
 
 		<div class="note">
-			<strong>Why this is safe:</strong> The certificate never leaves your local network. It only lets this device trust the CradleEcho monitor running on your Pi — nothing else.
+			<strong>Why this is safe:</strong> The certificate never leaves your local network. It only lets this device trust the Cribby monitor running on your Pi — nothing else.
 		</div>
 
-		<a id="openMonitor" class="link-btn" href="#">Open CradleEcho monitor →</a>
+		<a id="openMonitor" class="link-btn" href="#">Open Cribby monitor →</a>
 	</div>
 
 	<script>

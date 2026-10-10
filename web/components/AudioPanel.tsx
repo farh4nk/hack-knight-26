@@ -7,6 +7,7 @@ import { useAutoSoothe } from "@/hooks/useAutoSoothe";
 import { VoiceRecorder } from "./VoiceRecorder";
 import { SootheControls } from "./SootheControls";
 import { TwoWayAudio } from "./TwoWayAudio";
+import { babyObject, babySubject, getBabyName } from "@/lib/babyName";
 import { analyticsUrl } from "@/lib/config";
 
 
@@ -21,7 +22,7 @@ export function AudioPanel() {
     onEvent: async (e) => {
       console.info("[auto-soothe event]", e);
       if (e.type === "started") {
-        setNotification(`Auto-soothe triggered: soothing Maya in your voice.`);
+        setNotification(`Auto-soothe triggered: soothing ${babyObject(getBabyName())} in your voice.`);
         // Log intervention to Tiger Data via Dev 4 backend
         try {
           await fetch(`${analyticsUrl()}/api/soothe-events`, {
@@ -37,7 +38,7 @@ export function AudioPanel() {
           // Non-blocking if backend is offline
         }
       } else if (e.type === "settled") {
-        setNotification(`Maya is settled and asleep. Audio smoothly faded out.`);
+        setNotification(`${babySubject(getBabyName())} is settled and asleep. Audio smoothly faded out.`);
         setTimeout(() => setNotification(null), 8000);
       } else if (e.type === "stopped") {
         setNotification(null);

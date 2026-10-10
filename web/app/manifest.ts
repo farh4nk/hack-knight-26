@@ -1,9 +1,10 @@
 import type { MetadataRoute } from "next";
+import { APP_NAME } from "@/lib/config";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "CradleEcho",
-    short_name: "CradleEcho",
+    name: APP_NAME,
+    short_name: APP_NAME,
     description: "A sleep-aware baby monitor",
     start_url: "/",
     display: "standalone",

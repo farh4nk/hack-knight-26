@@ -10,8 +10,7 @@ export const SLEEP_STATES = [
 
 export type SleepState = (typeof SLEEP_STATES)[number];
 
-export const SOOTHING_PHRASES = [
-  "Shh, you’re safe, go back to sleep Maya.",
-  "Mommy and daddy are right here, sweet dreams.",
-  "Everything is okay, close your eyes.",
-];
+/** Short soothing phrases spoken in the parent's cloned voice, softly and gently. */
+export function soothingPhrases(): string[] {
+  return ["Shhh...", "Go to sleep...", "Good night..."];
+}

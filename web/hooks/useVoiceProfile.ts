@@ -15,7 +15,6 @@ export function useVoiceProfile() {
   const [snippets, setSnippets] = useState<SoothingSnippet[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   const render = useCallback(async (id: string) => {
     setLoading(true);
     try {
