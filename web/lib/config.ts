@@ -38,6 +38,11 @@ export const simulateRestlessUrl = () => `${daemonUrl()}/api/simulate-restless`;
 export const edgeSoothePlayUrl = () => `${daemonUrl()}/api/soothe/play`;
 export const edgeSootheStopUrl = () => `${daemonUrl()}/api/soothe/stop`;
 
+export const talkWsUrl = () => `${daemonUrl().replace(/^http/, "ws")}/ws/talk`;
+export const listenWsUrl = () => `${daemonUrl().replace(/^http/, "ws")}/ws/listen`;
+export const nightVisionUrl = () => `${daemonUrl()}/api/night-vision`;
+export const audioCapabilitiesUrl = () => `${daemonUrl()}/api/audio/capabilities`;
+
 // Generate telemetry in the browser instead of connecting to the daemon.
 export const MOCK = process.env.NEXT_PUBLIC_MOCK === "1";
 
