@@ -191,7 +191,7 @@ class TelemetryHub:
         forced = time.time() < self._forced_unstable_until
         cam_live = getattr(self.camera, "is_live", lambda: False)()
         cam_brightness = getattr(self.camera, "get_brightness", lambda: None)()
-        gate = (not is_mock) and cam_live and cam_brightness is not None and cam_brightness < settings.min_brightness
+        gate = cam_live and cam_brightness is not None and cam_brightness < settings.min_brightness
 
         reading_confidence = 0.0 if (forced or gate) else reading.confidence
 
