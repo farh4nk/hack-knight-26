@@ -29,6 +29,10 @@ class SimulateRestlessRequest(BaseModel):
     seconds: float = Field(default=15.0, ge=1.0, le=300.0)
 
 
+class CameraToggleRequest(BaseModel):
+    enabled: bool
+
+
 class PlaySootheRequest(BaseModel):
     audio_base64: str | None = None
     phrase: str | None = None
@@ -151,6 +155,22 @@ def create_app(
     @app.get("/api/state")
     async def get_state():
         return hub.get_latest_payload()
+
+    @app.get("/api/camera")
+    async def get_camera():
+        return {"enabled": cam.is_enabled(), "live": cam.is_live()}
+
+    @app.post("/api/camera")
+    async def set_camera(req: CameraToggleRequest):
+        """Turn the camera on or off. Off releases the device and ends the Presage session
+        (no Presage credits are used while it is off)."""
+        cam.set_enabled(req.enabled)
+        pause = getattr(src, "set_paused", None)
+        if pause is not None:
+            pause(not req.enabled)
+        logger.info("Camera %s via API", "enabled" if req.enabled else "disabled")
+        await hub.step()  # push the new state to viewers immediately
+        return {"enabled": cam.is_enabled(), "live": cam.is_live()}
 
     @app.post("/api/simulate-restless")
     async def simulate_restless(req: SimulateRestlessRequest | None = None):

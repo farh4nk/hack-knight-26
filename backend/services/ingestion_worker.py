@@ -36,6 +36,9 @@ class TelemetryIngestionWorker:
         """Parses and validates telemetry JSON packet against AGENTS.md contract."""
         try:
             payload = json.loads(raw_data)
+            # The camera was switched off: there is nothing to record (would read as signal loss).
+            if (payload.get("camera") or {}).get("enabled") is False:
+                return None
             # Contract: timestamp, state, vitals: {brpm, bpm, confidence}, motion_index
             ts = payload.get("timestamp") or datetime.datetime.now(datetime.timezone.utc).isoformat()
             state = payload.get("state", "SIGNAL_UNSTABLE")

@@ -52,6 +52,7 @@ def format_telemetry_payload(
     sdk_hint = getattr(source, "raw_validation_hint", None) if session_running else None
 
     camera_info = {
+        "enabled": getattr(camera, "is_enabled", lambda: True)() if camera else True,
         "live": is_live,
         "gate": gate_state,
         "framing": framing,
@@ -161,6 +162,12 @@ class TelemetryHub:
             motion = reading.motion_index
         else:
             motion = self.camera.get_motion_index()
+
+        cam_enabled = getattr(self.camera, "is_enabled", lambda: True)()
+        if not cam_enabled:
+            # Camera off: report no readings (the mock source would otherwise keep inventing them).
+            reading = Reading(brpm=0.0, bpm=0.0, confidence=0.0, motion_index=0.0, timestamp=reading.timestamp)
+            motion = 0.0
 
         forced = time.time() < self._forced_unstable_until
         cam_live = getattr(self.camera, "is_live", lambda: False)()
