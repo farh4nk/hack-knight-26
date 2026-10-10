@@ -83,6 +83,10 @@ export class SootheEngine {
     this.nextSnippet = 0;
   }
 
+  setOnEvent(fn?: (event: SootheEvent) => void) {
+    this.opts.onEvent = fn ?? (() => {});
+  }
+
   async unlock() {
     if (typeof window === "undefined") return;
     this.ensureElements();
