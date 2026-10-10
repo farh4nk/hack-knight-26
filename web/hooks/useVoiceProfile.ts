@@ -31,10 +31,17 @@ export function useVoiceProfile() {
 
   useEffect(() => {
     const id = loadVoiceId();
-    if (id) {
-      setVoiceId(id);
-      render(id);
-    }
+    if (!id) return;
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (!cancelled) {
+        setVoiceId(id);
+        void render(id);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [render]);
 
   const onboard = useCallback(

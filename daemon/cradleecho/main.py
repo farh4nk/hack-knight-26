@@ -17,6 +17,7 @@ from cradleecho.classifier import SleepStateClassifier
 from cradleecho.config import settings
 from cradleecho.sources.base import VitalsSource
 from cradleecho.sources.mock import MockVitalsSource
+from cradleecho.audio import edge_player
 from cradleecho.sources.presage import PresageVitalsSource
 from cradleecho.telemetry import TelemetryHub
 
@@ -26,6 +27,11 @@ logger = logging.getLogger("cradleecho")
 
 class SimulateRestlessRequest(BaseModel):
     seconds: float = Field(default=15.0, ge=1.0, le=300.0)
+
+
+class PlaySootheRequest(BaseModel):
+    audio_base64: str | None = None
+    phrase: str | None = None
 
 
 def build_source() -> VitalsSource:
@@ -178,6 +184,24 @@ def create_app(
         expiry_dt = datetime.fromtimestamp(expiry_epoch, tz=UTC)
         iso_str = expiry_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
         return JSONResponse({"forced_until": iso_str})
+
+    @app.post("/api/soothe/play")
+    async def play_edge_soothe(req: PlaySootheRequest | None = None):
+        """Plays soothing parent voice or calming chime directly on Pi hardware speaker."""
+        audio_data = req.audio_base64 if req else None
+        success = edge_player.play_base64_or_default(audio_data)
+        return {"status": "playing" if success else "failed", "phrase": req.phrase if req else None}
+
+    @app.post("/api/soothe/stop")
+    async def stop_edge_soothe():
+        """Silences the Pi hardware speaker."""
+        edge_player.stop()
+        return {"status": "stopped"}
+
+    @app.get("/api/soothe/status")
+    async def edge_soothe_status():
+        """Returns playback status of the Pi hardware speaker."""
+        return {"is_playing": edge_player.is_playing}
 
     @app.get("/video_feed")
     async def video_feed(request: Request, limit: int | None = None):

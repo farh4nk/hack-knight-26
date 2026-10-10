@@ -35,6 +35,8 @@ export const videoFeedUrl = (debug = false) =>
   // The debug feed has the daemon's face-gate and vitals overlay drawn on it.
   `${daemonUrl()}${debug ? "/video_feed/debug" : "/video_feed"}`;
 export const simulateRestlessUrl = () => `${daemonUrl()}/api/simulate-restless`;
+export const edgeSoothePlayUrl = () => `${daemonUrl()}/api/soothe/play`;
+export const edgeSootheStopUrl = () => `${daemonUrl()}/api/soothe/stop`;
 
 // Generate telemetry in the browser instead of connecting to the daemon.
 export const MOCK = process.env.NEXT_PUBLIC_MOCK === "1";

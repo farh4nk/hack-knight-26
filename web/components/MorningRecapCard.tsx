@@ -38,7 +38,25 @@ export function MorningRecapCard() {
   };
 
   useEffect(() => {
-    fetchSummary();
+    let cancelled = false;
+    Promise.resolve().then(async () => {
+      if (cancelled) return;
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(`${analyticsUrl()}/api/nightly-summary?baby_name=Maya`);
+        if (!res.ok) throw new Error("Could not load summary");
+        const json = await res.json();
+        if (!cancelled) setData(json);
+      } catch {
+        if (!cancelled) setError("Tiger Data / Gemini service currently offline (run backend on :8001)");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (
