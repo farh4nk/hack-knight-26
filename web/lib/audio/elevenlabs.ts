@@ -27,7 +27,7 @@ export function saveVoiceId(id: string | null) {
 }
 
 /** Task 3.1 — register the recorded sample as an Instant Voice Clone. */
-export async function cloneVoice(sample: Blob, name = "CradleEcho Parent"): Promise<string> {
+export async function cloneVoice(sample: Blob, name = "Cribby Parent"): Promise<string> {
   const res = await fetch(`/api/elevenlabs/clone?name=${encodeURIComponent(name)}`, {
     method: "POST",
     headers: { "Content-Type": sample.type || "audio/webm" },
@@ -52,9 +52,9 @@ export async function synthesize(voiceId: string, text: string): Promise<string>
   return URL.createObjectURL(await res.blob());
 }
 
-/** Task 3.2 — pre-render the three soothing variations. */
-export function renderSoothingSnippets(voiceId: string, babyName = ""): Promise<SoothingSnippet[]> {
+/** Task 3.2 — pre-render the short soothing phrases. */
+export function renderSoothingSnippets(voiceId: string): Promise<SoothingSnippet[]> {
   return Promise.all(
-    soothingPhrases(babyName).map(async (text) => ({ text, url: await synthesize(voiceId, text) })),
+    soothingPhrases().map(async (text) => ({ text, url: await synthesize(voiceId, text) })),
   );
 }

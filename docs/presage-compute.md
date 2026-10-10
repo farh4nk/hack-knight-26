@@ -33,6 +33,12 @@ and the rest of the daemon need the remainder, so the Presage SDK sits right at 
 Add `-e CRADLEECHO_DIAG=1` to either side to log pipeline rates every 5 s (`DIAG ...` lines).
 Pi tip: `echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor` (resets on reboot).
 
+## Pointing the UI at both machines
+Set `NEXT_PUBLIC_EDGE_URL=http://<pi-tailscale-ip>:8000` in `web/.env.local`. Speaker/mic/night-vision
+calls (`/ws/talk`, `/ws/listen`, `/api/audio/capabilities`, `/api/night-vision`, `/api/soothe/*`) then go
+to the Pi; telemetry, source, simulate and the camera switch stay on `NEXT_PUBLIC_DAEMON_URL` (the Mac,
+which owns Presage and its credits). Unset, everything goes to the daemon as before.
+
 ## Still open
 - With stable fps Presage now reports `kChestNotVisible`: it wants more of the chest in view
   (camera further back / tilted down). Heart rate needs a steady signal after that.

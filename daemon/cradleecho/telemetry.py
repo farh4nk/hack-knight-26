@@ -55,6 +55,9 @@ def format_telemetry_payload(
         # "Hold still and record." is Presage's all-clear, not a problem to show the parent.
         sdk_code = sdk_hint = None
 
+    night_vision_mode = getattr(camera, "get_night_vision_mode", lambda: "OFF")() if camera else "OFF"
+    enhancing = getattr(camera, "is_enhancing", lambda: False)() if camera else False
+
     camera_info = {
         "enabled": getattr(camera, "is_enabled", lambda: True)() if camera else True,
         "live": is_live,
@@ -62,6 +65,8 @@ def format_telemetry_payload(
         "framing": framing,
         "sdk_code": sdk_code,
         "sdk_hint": sdk_hint,
+        "night_vision": night_vision_mode,
+        "enhancing": enhancing,
     }
 
     return {

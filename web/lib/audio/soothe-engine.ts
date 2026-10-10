@@ -112,6 +112,17 @@ export class SootheEngine {
     else this.emit();
   }
 
+  /** Duck (pause) the soothe audio while the parent is talking. */
+  setDucked(ducked: boolean) {
+    if (ducked) {
+      this.ambient?.pause();
+      this.voice?.pause();
+    } else if (this.status === "soothing" || this.status === "fading") {
+      this.ambient?.play().catch(() => {});
+      this.voice?.play().catch(() => {});
+    }
+  }
+
   onTelemetry({ state }: { state?: string | null }) {
     if (!state || state === this.lastState) return;
     this.lastState = state;

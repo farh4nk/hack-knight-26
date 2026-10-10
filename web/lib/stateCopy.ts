@@ -71,7 +71,7 @@ export function copyFor(tone: Tone, camera?: CameraStatus, name = ""): StateCopy
   }
 }
 
-/** Short log line for a transition ("restless" -> "Maya became restless"). */
+/** Short log line for a transition ("restless" -> "[name] became restless"). */
 export function eventText(tone: Tone, camera?: CameraStatus, prev?: Tone | null, name = ""): string {
   if (tone === "paused") return "Camera turned off";
   if (prev === "paused") return "Camera turned on";

@@ -1,5 +1,5 @@
 import { SIMULATE_RESTLESS_MS, TELEMETRY_HZ } from "./config";
-import type { CameraStatus, SleepState, Telemetry } from "./types";
+import type { CameraStatus, NightVisionMode, SleepState, Telemetry } from "./types";
 
 // Scripted cycle so every badge state shows up within about a minute.
 const SCRIPT: { state: SleepState; seconds: number }[] = [
@@ -22,23 +22,53 @@ const PROFILE: Record<
   SIGNAL_UNSTABLE: { brpm: 0, bpm: 0, motion: 0.3, confidence: 0.2 },
 };
 
-// Camera status per state; SIGNAL_UNSTABLE shows a Presage hint like the real daemon.
-const CAMERA: Record<SleepState, CameraStatus> = {
-  ASLEEP: { live: true, gate: "OPEN", framing: "OK", sdk_code: null, sdk_hint: null },
-  DROWSY: { live: true, gate: "OPEN", framing: "OK", sdk_code: null, sdk_hint: null },
-  RESTLESS: { live: true, gate: "OPEN", framing: "OK", sdk_code: null, sdk_hint: null },
-  AWAKE: { live: true, gate: "OPEN", framing: "OK", sdk_code: null, sdk_hint: null },
-  SIGNAL_UNSTABLE: {
+const NIGHT_VISION_MODES: NightVisionMode[] = ["OFF", "AUTO", "ON"];
+
+function cameraFor(state: SleepState, mode: NightVisionMode): CameraStatus {
+  const base: CameraStatus = {
     live: true,
-    gate: "CLOSED",
-    framing: "NO_CHEST_ROOM",
-    sdk_code: "kFaceTooLow",
-    sdk_hint: "Move up, or tilt the camera down.",
+    gate: state === "SIGNAL_UNSTABLE" ? "CLOSED" : "OPEN",
+    framing: state === "SIGNAL_UNSTABLE" ? "NO_CHEST_ROOM" : "OK",
+    sdk_code: state === "SIGNAL_UNSTABLE" ? "kFaceTooLow" : null,
+    sdk_hint: state === "SIGNAL_UNSTABLE" ? "Move up, or tilt the camera down." : null,
+    night_vision: mode,
+    enhancing: mode !== "OFF" && state !== "SIGNAL_UNSTABLE",
+  };
+  return base;
+}
+
+const CAMERA: Record<SleepState, Record<NightVisionMode, CameraStatus>> = {
+  ASLEEP: {
+    OFF: cameraFor("ASLEEP", "OFF"),
+    AUTO: cameraFor("ASLEEP", "AUTO"),
+    ON: cameraFor("ASLEEP", "ON"),
+  },
+  DROWSY: {
+    OFF: cameraFor("DROWSY", "OFF"),
+    AUTO: cameraFor("DROWSY", "AUTO"),
+    ON: cameraFor("DROWSY", "ON"),
+  },
+  RESTLESS: {
+    OFF: cameraFor("RESTLESS", "OFF"),
+    AUTO: cameraFor("RESTLESS", "AUTO"),
+    ON: cameraFor("RESTLESS", "ON"),
+  },
+  AWAKE: {
+    OFF: cameraFor("AWAKE", "OFF"),
+    AUTO: cameraFor("AWAKE", "AUTO"),
+    ON: cameraFor("AWAKE", "ON"),
+  },
+  SIGNAL_UNSTABLE: {
+    OFF: cameraFor("SIGNAL_UNSTABLE", "OFF"),
+    AUTO: cameraFor("SIGNAL_UNSTABLE", "AUTO"),
+    ON: cameraFor("SIGNAL_UNSTABLE", "ON"),
   },
 };
 
 const jitter = (base: number, spread: number) =>
   base + (Math.random() - 0.5) * 2 * spread;
+
+let nightVisionModeIndex = 0;
 
 export interface MockTelemetrySource {
   stop: () => void;
@@ -66,6 +96,8 @@ export function startMockTelemetry(
   const timer = setInterval(() => {
     const state = Date.now() < restlessUntil ? "RESTLESS" : scriptedState();
     const p = PROFILE[state];
+    const mode = NIGHT_VISION_MODES[nightVisionModeIndex % NIGHT_VISION_MODES.length];
+    nightVisionModeIndex++;
     onMessage({
       timestamp: new Date().toISOString(),
       state,
@@ -77,7 +109,7 @@ export function startMockTelemetry(
       },
       motion_index: Number(Math.max(0, jitter(p.motion, 0.05)).toFixed(2)),
       camera: {
-        ...CAMERA[state],
+        ...CAMERA[state][mode],
         enabled: cameraOn,
         live: cameraOn,
       },
