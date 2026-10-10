@@ -1,7 +1,7 @@
 [project]
 name = "cradleecho"
 version = "0.1.0"
-description = "CradleEcho edge daemon for camera capture, sleep state classification, and telemetry"
+description = "Cribby edge daemon for camera capture, sleep state classification, and telemetry"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

@@ -23,7 +23,7 @@ from backend.services.gemini_summary import (
 )
 
 app = FastAPI(
-    title="CradleEcho Analytics & Summary API",
+    title="Cribby Analytics & Summary API",
     description="Time-series telemetry storage with Tiger Data and Gemini morning recaps",
     version="1.0.0"
 )
@@ -39,7 +39,7 @@ app.add_middleware(
 
 class NightlyQAQuery(BaseModel):
     question: str
-    baby_name: Optional[str] = "Maya"
+    baby_name: Optional[str] = "Baby"
     bedtime: Optional[str] = "20:00"
     wake_time: Optional[str] = "07:00"
 
@@ -76,7 +76,7 @@ def health_check():
 
 @app.get("/api/nightly-summary")
 def get_nightly_summary(
-    baby_name: str = "Maya",
+    baby_name: str = "Baby",
     bedtime: str = "20:00",
     wake_time: str = "07:00",
     hours: Optional[int] = None
@@ -95,7 +95,7 @@ def ask_nightly_qa(query: NightlyQAQuery):
     try:
         res = answer_nightly_question(
             query.question,
-            baby_name=query.baby_name or "Maya",
+            baby_name=query.baby_name or "Baby",
             bedtime=query.bedtime or "20:00",
             wake_time=query.wake_time or "07:00",
         )
