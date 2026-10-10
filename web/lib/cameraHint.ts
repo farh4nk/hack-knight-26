@@ -9,9 +9,11 @@ const FRAMING_HINTS: Partial<Record<CameraFraming, string>> = {
   NO_CHEST_ROOM: "Chest not visible — tilt the camera down",
 };
 
-export const DEFAULT_UNSTABLE_HINT = "Adjust Crib Lighting";
+// Nothing in the pipeline measures light, so the fallback only says what was observed: no confident
+// reading yet (Presage is still warming up or rates the signal at zero).
+export const DEFAULT_UNSTABLE_HINT = "Hold still, taking a reading. Steady light on the face helps";
 
-/** Best available fix for a SIGNAL_UNSTABLE reading: Presage hint, then framing, then lighting. */
+/** Best available fix for a SIGNAL_UNSTABLE reading: Presage hint, then framing, then a generic "taking a reading" note. */
 export function unstableHint(camera: CameraStatus | undefined): string {
   if (!camera) return DEFAULT_UNSTABLE_HINT;
   if (camera.sdk_hint) return camera.sdk_hint;
