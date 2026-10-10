@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Disclaimer } from "@/components/Disclaimer";
+import { GeminiNightQA } from "@/components/GeminiNightQA";
 import { Header } from "@/components/Header";
 import { analyticsUrl, BABY_NAME } from "@/lib/config";
 
@@ -345,6 +346,8 @@ export default function DashboardPage() {
               )}
             </ul>
           </section>
+
+          <GeminiNightQA />
         </>
       )}
 
