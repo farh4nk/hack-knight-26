@@ -19,14 +19,29 @@ function statusParts(camera: CameraStatus): string[] {
 
 /** The live feed, framed like a window and lit by the baby's current state. */
 export function CameraWindow() {
-  const { latest, stale } = useTelemetry();
+  const { latest, stale, setCameraEnabled } = useTelemetry();
   const daemon = useDaemonUrl();
   const [offline, setOffline] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [overlay, setOverlay] = useState(false);
   const [privacyBlur, setPrivacyBlur] = useState(false);
+  const [toggling, setToggling] = useState(false);
+  const [toggleError, setToggleError] = useState<string | null>(null);
   const feedUrl = daemon ? `${daemon}${overlay ? "/video_feed/debug" : "/video_feed"}` : null;
   const camera = stale ? undefined : latest?.camera;
+  const cameraOff = camera?.enabled === false;
+
+  const toggleCamera = async () => {
+    setToggling(true);
+    setToggleError(null);
+    try {
+      await setCameraEnabled(cameraOff);
+    } catch (e) {
+      setToggleError(e instanceof Error ? e.message : "Couldn’t reach the camera unit.");
+    } finally {
+      setToggling(false);
+    }
+  };
 
   // While offline, re-request the MJPEG stream every few seconds.
   useEffect(() => {
@@ -48,7 +63,8 @@ export function CameraWindow() {
         }}
       >
         <div className="relative aspect-video overflow-hidden rounded-[1.6rem] bg-black/70">
-          {!offline && feedUrl && (
+          {/* Not loaded while the camera is off: no stream requests, no stale frames. */}
+          {!cameraOff && !offline && feedUrl && (
             // MJPEG stream: plain <img>, next/image can't handle multipart streams.
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -66,8 +82,30 @@ export function CameraWindow() {
             />
           )}
 
+          {cameraOff && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
+              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="text-ink-faint" aria-hidden>
+                <path d="M2 2l20 20" />
+                <path d="M7 7H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h11a2 2 0 0 0 1.4-.6" />
+                <path d="M21 17V8.4a1 1 0 0 0-1.6-.8L16 10V9a2 2 0 0 0-2-2h-3" />
+              </svg>
+              <span className="font-display text-2xl text-ink [font-variation-settings:'SOFT'_100]">Camera is off</span>
+              <span className="max-w-sm text-sm text-ink-dim">
+                Monitoring is paused. Presage isn’t running, so no credits are being used.
+              </span>
+              <button
+                type="button"
+                onClick={toggleCamera}
+                disabled={toggling}
+                className="mt-1 rounded-full bg-ink px-5 py-2 text-sm font-medium text-[#0a0b15] transition hover:opacity-90 disabled:opacity-50"
+              >
+                {toggling ? "Turning on…" : "Turn camera on"}
+              </button>
+            </div>
+          )}
+
           {/* Privacy Shield Blur Overlay */}
-          {privacyBlur && !offline && (
+          {privacyBlur && !offline && !cameraOff && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/40 text-center text-ink backdrop-blur-sm pointer-events-none p-4">
               <svg className="h-9 w-9 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
@@ -81,7 +119,7 @@ export function CameraWindow() {
             </div>
           )}
 
-          {offline && (
+          {offline && !cameraOff && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-center text-ink-dim">
               <span className="font-display text-2xl text-ink">Camera offline</span>
               <span className="text-sm">Trying to reconnect…</span>
@@ -96,33 +134,70 @@ export function CameraWindow() {
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 px-2 text-sm text-ink-faint">
-        <span>{camera ? statusParts(camera).join("  ·  ") : " "}</span>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <button
             type="button"
-            onClick={() => setPrivacyBlur((b) => !b)}
-            aria-pressed={privacyBlur}
-            className={`flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs transition ${
-              privacyBlur
-                ? "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30"
-                : "hover:text-ink"
-            }`}
+            role="switch"
+            aria-checked={!cameraOff}
+            aria-label="Camera"
+            onClick={toggleCamera}
+            // Unknown state (no telemetry yet / daemon unreachable): don't guess which way to flip.
+            disabled={toggling || !camera}
+            className="flex items-center gap-2 rounded-full py-0.5 pl-0.5 pr-3 text-xs text-ink-dim ring-1 ring-white/12 transition hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-            </svg>
-            {privacyBlur ? "Privacy blur: ON" : "Privacy blur"}
+            <span className={`relative h-5 w-9 rounded-full transition-colors ${cameraOff ? "bg-white/15" : "bg-tone"}`}>
+              <span
+                className={`absolute top-0.5 h-4 w-4 rounded-full bg-ink shadow transition-all ${cameraOff ? "left-0.5" : "left-[1.125rem]"}`}
+              />
+            </span>
+            Camera {toggling ? "…" : cameraOff ? "off" : "on"}
           </button>
-          <button
-            type="button"
-            onClick={() => setOverlay((o) => !o)}
-            aria-pressed={overlay}
-            className="rounded-full px-2 py-0.5 underline-offset-4 transition hover:text-ink hover:underline aria-pressed:text-tone"
-          >
-            {overlay ? "Hide" : "Show"} detection overlay
-          </button>
+          <span className="flex flex-wrap items-center">
+            {cameraOff
+              ? "Presage paused · no credits in use"
+              : camera
+                ? statusParts(camera).map((part, i) => (
+                    <span key={part} className="flex items-center">
+                      {i > 0 && <span aria-hidden className="mx-2.5 text-ink-faint/60">·</span>}
+                      {part}
+                    </span>
+                  ))
+                : " "}
+          </span>
         </div>
+        {!cameraOff && (
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setPrivacyBlur((b) => !b)}
+              aria-pressed={privacyBlur}
+              className={`flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs transition ${
+                privacyBlur
+                  ? "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30"
+                  : "hover:text-ink"
+              }`}
+            >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+              {privacyBlur ? "Privacy blur: ON" : "Privacy blur"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setOverlay((o) => !o)}
+              aria-pressed={overlay}
+              className="rounded-full px-2 py-0.5 underline-offset-4 transition hover:text-ink hover:underline aria-pressed:text-tone"
+            >
+              {overlay ? "Hide" : "Show"} detection overlay
+            </button>
+          </div>
+        )}
       </div>
+      {toggleError && (
+        <p role="alert" className="px-2 text-sm text-rose-300">
+          {toggleError}
+        </p>
+      )}
     </section>
   );
 }

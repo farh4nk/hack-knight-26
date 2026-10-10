@@ -1,13 +1,13 @@
 "use client";
 
 import { useTelemetry } from "@/context/TelemetryProvider";
-import { copyFor, toneFor } from "@/lib/stateCopy";
+import { copyFor, toneOf } from "@/lib/stateCopy";
 
 /** Glass pill on the video: the live state at a glance. */
 export function StateBadge() {
   const { latest, connected, stale } = useTelemetry();
-  const tone = toneFor(latest?.state, !connected || stale || !latest);
-  const { pill } = copyFor(tone, latest?.camera);
+  const tone = toneOf(latest, !connected || stale);
+  const { pill } = copyFor(tone, latest?.camera); // the pill never contains the name
 
   return (
     <div

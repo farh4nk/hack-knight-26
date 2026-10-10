@@ -1,4 +1,4 @@
-import { SOOTHING_PHRASES } from "./constants";
+import { soothingPhrases } from "./constants";
 
 const VOICE_KEY = "cradleecho.voiceId";
 
@@ -53,8 +53,8 @@ export async function synthesize(voiceId: string, text: string): Promise<string>
 }
 
 /** Task 3.2 — pre-render the three soothing variations. */
-export function renderSoothingSnippets(voiceId: string): Promise<SoothingSnippet[]> {
+export function renderSoothingSnippets(voiceId: string, babyName = ""): Promise<SoothingSnippet[]> {
   return Promise.all(
-    SOOTHING_PHRASES.map(async (text) => ({ text, url: await synthesize(voiceId, text) })),
+    soothingPhrases(babyName).map(async (text) => ({ text, url: await synthesize(voiceId, text) })),
   );
 }

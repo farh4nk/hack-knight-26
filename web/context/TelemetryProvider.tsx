@@ -13,11 +13,12 @@ import {
   HISTORY_LENGTH,
   MOCK,
   STALE_AFTER_MS,
+  cameraUrl,
   simulateRestlessUrl,
   wsUrl,
 } from "@/lib/config";
 import { startMockTelemetry, type MockTelemetrySource } from "@/lib/mockTelemetry";
-import { toneFor } from "@/lib/stateCopy";
+import { toneOf } from "@/lib/stateCopy";
 import { isTelemetry, type Telemetry } from "@/lib/types";
 import { useActivity, type ActivityEvent } from "@/lib/useActivity";
 
@@ -39,6 +40,8 @@ export interface TelemetryContextValue {
   alerts: { supported: boolean; enabled: boolean; set: (on: boolean) => Promise<void> };
   /** Forces RESTLESS for 15s (daemon endpoint, or the mock generator). */
   simulateRestless: () => Promise<void>;
+  /** Turn the camera on/off. Off stops capture and the Presage session (no credits used). */
+  setCameraEnabled: (enabled: boolean) => Promise<void>;
 }
 
 const TelemetryContext = createContext<TelemetryContextValue | null>(null);
@@ -60,7 +63,7 @@ export function TelemetryProvider({ children }: { children: ReactNode }) {
     setStale(false);
     setLatest(t);
     setHistory((prev) => [...prev.slice(-(HISTORY_LENGTH - 1)), t]);
-    record(toneFor(t.state, false), t.camera);
+    record(toneOf(t, false), t.camera);
   }, [record]);
 
   // Data source: in-browser mock, or the daemon WebSocket with reconnect backoff.
@@ -149,9 +152,22 @@ export function TelemetryProvider({ children }: { children: ReactNode }) {
     }, 15000);
   }, [handleMessage]);
 
+  const setCameraEnabled = useCallback(async (enabled: boolean) => {
+    if (MOCK) {
+      mockSource.current?.setCameraEnabled(enabled);
+      return;
+    }
+    const res = await fetch(cameraUrl(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    });
+    if (!res.ok) throw new Error(`Couldn’t turn the camera ${enabled ? "on" : "off"} (HTTP ${res.status})`);
+  }, []);
+
   return (
     <TelemetryContext.Provider
-      value={{ latest, history, connected, stale, mock: MOCK, events, stateSince, alerts, simulateRestless }}
+      value={{ latest, history, connected, stale, mock: MOCK, events, stateSince, alerts, simulateRestless, setCameraEnabled }}
     >
       {children}
     </TelemetryContext.Provider>

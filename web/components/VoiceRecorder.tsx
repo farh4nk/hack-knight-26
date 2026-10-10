@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { babyObject, useBabyName } from "@/lib/babyName";
 
 const RECORD_SECONDS = 10;
 
@@ -13,6 +14,7 @@ export function VoiceRecorder({ onComplete, loading }: VoiceRecorderProps) {
   const [phase, setPhase] = useState<"idle" | "recording" | "uploading" | "done" | "error">("idle");
   const [remaining, setRemaining] = useState(RECORD_SECONDS);
   const [error, setError] = useState<string | null>(null);
+  const name = useBabyName() ?? "";
   const recorderRef = useRef<MediaRecorder | null>(null);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -68,8 +70,8 @@ export function VoiceRecorder({ onComplete, loading }: VoiceRecorderProps) {
     <div>
       <h2 className="font-display text-xl text-ink [font-variation-settings:'SOFT'_100]">Your voice</h2>
       <p className="mt-3 text-sm leading-relaxed text-ink-dim">
-        Read anything aloud for {RECORD_SECONDS} seconds in a calm, natural tone. CradleEcho uses it to settle
-        Maya in your voice before you have to get out of bed.
+        Read anything aloud for {RECORD_SECONDS} seconds in a calm, natural tone. CradleEcho uses it to settle{" "}
+        {babyObject(name)} in your voice before you have to get out of bed.
       </p>
 
       {phase === "recording" && (

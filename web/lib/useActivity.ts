@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState, useSyncExternalStore } from "react";
+import { getBabyName } from "./babyName";
 import { APP_NAME } from "./config";
 import { eventText, shouldNotify, type Tone } from "./stateCopy";
 import type { CameraStatus } from "./types";
@@ -78,7 +79,7 @@ export function useActivity() {
     setStateSince(now);
     if (prev === null) return; // the first reading isn't a "change"
 
-    const text = eventText(tone, camera, prev);
+    const text = eventText(tone, camera, prev, getBabyName());
     setEvents((list) => [{ id: ++idRef.current, at: now, tone, text }, ...list].slice(0, MAX_EVENTS));
 
     if (getAlerts() && document.hidden && shouldNotify(prev, tone)) {
