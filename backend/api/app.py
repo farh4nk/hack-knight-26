@@ -14,7 +14,13 @@ from pydantic import BaseModel
 from typing import Optional, List
 import datetime
 from backend.db.connection import get_db_connection, is_postgres, test_connection
-from backend.services.gemini_summary import fetch_nightly_metrics, generate_morning_brief
+from backend.services.gemini_summary import (
+    fetch_nightly_metrics,
+    generate_morning_brief,
+    answer_nightly_question,
+    get_night_window,
+    parse_dt_safe,
+)
 
 app = FastAPI(
     title="CradleEcho Analytics & Summary API",
@@ -30,6 +36,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+class NightlyQAQuery(BaseModel):
+    question: str
+    baby_name: Optional[str] = "Maya"
+    bedtime: Optional[str] = "20:00"
+    wake_time: Optional[str] = "07:00"
 
 class SootheEventCreate(BaseModel):
     triggered_at: Optional[str] = None
@@ -63,47 +75,126 @@ def health_check():
     }
 
 @app.get("/api/nightly-summary")
-def get_nightly_summary(baby_name: str = "Maya", hours: int = 12):
-    """Task 4.3: Aggregates night vitals from Tiger Data and prompts Gemini for a 3-bullet recap."""
+def get_nightly_summary(
+    baby_name: str = "Maya",
+    bedtime: str = "20:00",
+    wake_time: str = "07:00",
+    hours: Optional[int] = None
+):
+    """Task 4.3: Aggregates night vitals from Tiger Data scoped to parent bedtime window and prompts Gemini."""
     try:
-        metrics = fetch_nightly_metrics(hours=hours)
+        metrics = fetch_nightly_metrics(bedtime=bedtime, wake_time=wake_time, hours=hours)
         summary = generate_morning_brief(metrics, baby_name=baby_name)
         return summary
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/nightly-qa")
+def ask_nightly_qa(query: NightlyQAQuery):
+    """Answers parent questions about sleep vitals using Gemini and Tiger Data."""
+    try:
+        res = answer_nightly_question(
+            query.question,
+            baby_name=query.baby_name or "Maya",
+            bedtime=query.bedtime or "20:00",
+            wake_time=query.wake_time or "07:00",
+        )
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/sleep-timeline")
-def get_sleep_timeline(limit: int = 100):
+def get_sleep_timeline(
+    limit: int = 120,
+    bedtime: Optional[str] = "20:00",
+    wake_time: Optional[str] = "07:00"
+):
     """Returns chronological timeline segments for Dev 2's sleep status block chart."""
     with get_db_connection() as conn:
         cur = conn.cursor()
         try:
-            # Query recent entries ordered chronologically
+            if bedtime and wake_time:
+                cur.execute("SELECT MAX(time) as max_time FROM baby_vitals;")
+                time_row = cur.fetchone()
+                latest_time = parse_dt_safe(time_row["max_time"]) if time_row and time_row["max_time"] else datetime.datetime.now(datetime.timezone.utc)
+                window_start, window_end = get_night_window(bedtime, wake_time, as_of=latest_time)
+
+                cur.execute(
+                    """
+                    SELECT time, state, breathing_rate, heart_rate, motion_index
+                    FROM baby_vitals
+                    WHERE time >= %s AND time <= %s
+                    ORDER BY time ASC
+                    LIMIT %s;
+                    """ if is_postgres() else """
+                    SELECT time, state, breathing_rate, heart_rate, motion_index
+                    FROM baby_vitals
+                    WHERE time >= ? AND time <= ?
+                    ORDER BY time ASC
+                    LIMIT ?;
+                    """,
+                    (window_start, window_end, limit)
+                )
+                rows = cur.fetchall()
+                if rows:
+                    return {"timeline": [dict(r) for r in rows]}
+
+            # Fallback if window empty
             cur.execute(
                 """
                 SELECT time, state, breathing_rate, heart_rate, motion_index
                 FROM baby_vitals
-                ORDER BY time ASC
+                ORDER BY time DESC
                 LIMIT %s;
                 """ if is_postgres() else """
                 SELECT time, state, breathing_rate, heart_rate, motion_index
                 FROM baby_vitals
-                ORDER BY time ASC
+                ORDER BY time DESC
                 LIMIT ?;
                 """,
                 (limit,)
             )
             rows = cur.fetchall()
-            return {"timeline": [dict(r) for r in rows]}
+            return {"timeline": [dict(r) for r in reversed(rows)]}
         finally:
             cur.close()
 
 @app.get("/api/vitals-trend")
-def get_vitals_trend(limit: int = 60):
+def get_vitals_trend(
+    limit: int = 60,
+    bedtime: Optional[str] = "20:00",
+    wake_time: Optional[str] = "07:00"
+):
     """Returns downsampled vitals for Dev 2 sparkline charts (breathing and pulse rates)."""
     with get_db_connection() as conn:
         cur = conn.cursor()
         try:
+            if bedtime and wake_time:
+                cur.execute("SELECT MAX(time) as max_time FROM baby_vitals;")
+                time_row = cur.fetchone()
+                latest_time = parse_dt_safe(time_row["max_time"]) if time_row and time_row["max_time"] else datetime.datetime.now(datetime.timezone.utc)
+                window_start, window_end = get_night_window(bedtime, wake_time, as_of=latest_time)
+
+                cur.execute(
+                    """
+                    SELECT time, breathing_rate, heart_rate, state
+                    FROM baby_vitals
+                    WHERE time >= %s AND time <= %s
+                    ORDER BY time ASC
+                    LIMIT %s;
+                    """ if is_postgres() else """
+                    SELECT time, breathing_rate, heart_rate, state
+                    FROM baby_vitals
+                    WHERE time >= ? AND time <= ?
+                    ORDER BY time ASC
+                    LIMIT ?;
+                    """,
+                    (window_start, window_end, limit)
+                )
+                rows = cur.fetchall()
+                if rows:
+                    return {"trend": [dict(r) for r in rows]}
+
             cur.execute(
                 """
                 SELECT time, breathing_rate, heart_rate, state
@@ -119,7 +210,6 @@ def get_vitals_trend(limit: int = 60):
                 (limit,)
             )
             rows = cur.fetchall()
-            # Return reversed so frontend receives it in ascending chronological order
             trend_data = [dict(r) for r in reversed(rows)]
             return {"trend": trend_data}
         finally:

@@ -1,4 +1,4 @@
-# Runs on the Raspberry Pi: daemon (camera, Presage, telemetry) + web UI.
+# Runs on the Raspberry Pi: daemon (camera, Presage, telemetry, audio) + analytics (Tiger Data, Gemini) + web UI.
 # Images are built on a laptop and shipped by build_and_ship.sh; the Pi builds nothing.
 #
 #   cd ~/cradleecho && docker compose up -d
@@ -27,13 +27,30 @@ services:
       # find which host node is the Logitech; a Pi has many /dev/video* nodes.
       - "${CRADLEECHO_VIDEO_DEVICE:-/dev/video0}:/dev/video0"
       - /dev/dri:/dev/dri
+      - /dev/snd:/dev/snd
     group_add:
       # Numeric host GIDs: names resolve inside the image, not on the host.
       - "${VIDEO_GID:-44}"
       - "${RENDER_GID:-105}"
+      - "${AUDIO_GID:-29}"
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  analytics:
+    image: cradleecho-analytics:latest
+    ports:
+      - "8001:8001"
+    env_file:
+      - analytics.env # TIGER_DATA_CONNECTION_STRING, GEMINI_API_KEY
+    depends_on:
+      - daemon
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/api/health')\""]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -46,4 +63,5 @@ services:
       - web.env # ELEVENLABS_API_KEY (used by the server-side voice routes)
     depends_on:
       - daemon
+      - analytics
     restart: unless-stopped

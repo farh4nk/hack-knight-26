@@ -38,6 +38,7 @@ RUN curl -fsSL https://packages.presagetech.com/KEY.gpg | gpg --dearmor -o /etc/
 RUN apt-get update && apt-get install -y \
     libsmartspectra-dev=3.4.0-noble1 \
     libopencv-dev \
+    alsa-utils \
     python3.12 \
     python3.12-venv \
     python-is-python3 \
@@ -45,8 +46,8 @@ RUN apt-get update && apt-get install -y \
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Set up non-root user in video group
-RUN useradd -m -G video -s /bin/bash cradleecho
+# Set up non-root user in video and audio groups
+RUN useradd -m -G video,audio -s /bin/bash cradleecho
 
 WORKDIR /app
 RUN chown cradleecho:cradleecho /app

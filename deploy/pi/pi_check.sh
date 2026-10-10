@@ -66,13 +66,18 @@ fi
 echo "Compose settings"
 VIDEO_GID=$(getent group video | cut -d: -f3)
 RENDER_GID=$(getent group render | cut -d: -f3)
+AUDIO_GID=$(getent group audio | cut -d: -f3)
 [[ -n "$VIDEO_GID" ]] && ok "video group gid $VIDEO_GID" || warn "no 'video' group found"
 [[ -n "$RENDER_GID" ]] && ok "render group gid $RENDER_GID" || warn "no 'render' group found (the default 105 will be used)"
+[[ -n "$AUDIO_GID" ]] && ok "audio group gid $AUDIO_GID" || warn "no 'audio' group found (the default 29 will be used)"
 if [[ -f daemon.env ]] && grep -q '^PRESAGE_API_KEY=.\+' daemon.env; then ok "PRESAGE_API_KEY set in daemon.env"
 else warn "PRESAGE_API_KEY missing in daemon.env: the daemon will fall back to MOCK vitals"; fi
+if [[ -f analytics.env ]] && grep -q '^TIGER_DATA_CONNECTION_STRING=.\+' analytics.env; then ok "TIGER_DATA_CONNECTION_STRING set in analytics.env"
+else warn "TIGER_DATA_CONNECTION_STRING missing in analytics.env: analytics will fall back to SQLite"; fi
 if [[ -f web.env ]] && grep -q '^ELEVENLABS_API_KEY=.\+' web.env; then ok "ELEVENLABS_API_KEY set in web.env"
 else warn "ELEVENLABS_API_KEY missing in web.env: voice cloning and talk-to-baby will not work"; fi
 docker image inspect cradleecho-daemon:latest >/dev/null 2>&1 && ok "daemon image loaded" || bad "daemon image not loaded (run build_and_ship.sh from your laptop)"
+docker image inspect cradleecho-analytics:latest >/dev/null 2>&1 && ok "analytics image loaded" || bad "analytics image not loaded (run build_and_ship.sh from your laptop)"
 docker image inspect cradleecho-web:latest >/dev/null 2>&1 && ok "web image loaded" || bad "web image not loaded (run build_and_ship.sh from your laptop)"
 
 if [[ $WRITE -eq 1 ]]; then
@@ -80,6 +85,7 @@ if [[ $WRITE -eq 1 ]]; then
     [[ -n "$VIDEO_DEV" ]] && echo "CRADLEECHO_VIDEO_DEVICE=$VIDEO_DEV"
     [[ -n "$VIDEO_GID" ]] && echo "VIDEO_GID=$VIDEO_GID"
     [[ -n "$RENDER_GID" ]] && echo "RENDER_GID=$RENDER_GID"
+    [[ -n "$AUDIO_GID" ]] && echo "AUDIO_GID=$AUDIO_GID"
   } > .env
   echo "Wrote .env:"; sed 's/^/        /' .env
 fi
